@@ -9,6 +9,7 @@ Thumbs.db
 .vscode/
 .idea/
 AGENTS.md
+AGENTS.local.md
 
 # Local environment and secrets
 .env
@@ -23,10 +24,13 @@ private/
 scratch/
 tmp/
 temp/
+notes/
+private-notes/
 
 # Backups and temporary artifacts
 *.zip
 *.log
+logs/
 *.bak
 *.tmp
 *.old
@@ -36,5 +40,9 @@ temp/
 *~
 backup/
 backups/
+build/
+dist/
+release/
+releases/
 *.7z
 *.rar
