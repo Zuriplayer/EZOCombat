@@ -1,0 +1,40 @@
+.DS_Store
+Thumbs.db
+
+# Local assistant / agent state
+.codex/
+.agents/
+.cursor/
+.claude/
+.vscode/
+.idea/
+AGENTS.md
+
+# Local environment and secrets
+.env
+.env.*
+*.secret*
+secrets.*
+*.local*
+
+# Local-only work areas
+local/
+private/
+scratch/
+tmp/
+temp/
+
+# Backups and temporary artifacts
+*.zip
+*.log
+*.bak
+*.tmp
+*.old
+*.orig
+*.backup
+*.swp
+*~
+backup/
+backups/
+*.7z
+*.rar

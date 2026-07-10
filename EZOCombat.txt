@@ -1,0 +1,13 @@
+## Title: E|cB040FFZ|rOCombat
+## Description: Concept notebook for future EZO combat bindings, alerts, and automation-safe research.
+## Author: @Zuriplayer
+## Version: 0.1.0-beta
+## AddOnVersion: 100
+## APIVersion: 101049 101050
+## OptionalDependsOn: LibDebugLogger DebugLogViewer
+
+lang/en.lua
+lang/es.lua
+modules/i18n.lua
+EZOCombat.lua
+modules/core.lua
