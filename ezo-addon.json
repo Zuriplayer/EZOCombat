@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "addon": {
+    "id": "ezocombat",
+    "name": "EZOCombat",
+    "version": "0.1.0-beta",
+    "status": "beta",
+    "phase": "public-beta",
+    "visibility": "public",
+    "manifest": "EZOCombat.txt",
+    "package": {
+      "rootFolderName": "EZOCombat",
+      "zipName": "EZOCombat_v0.1.0-beta.zip",
+      "outputPath": "dist",
+      "include": [
+        "*.txt",
+        "*.lua",
+        "*.xml",
+        "modules/**",
+        "lang/**",
+        "libs/**",
+        "media/**",
+        "textures/**",
+        "fonts/**",
+        "bindings/**"
+      ],
+      "exclude": [
+        ".codex/**",
+        ".github/**",
+        ".git/**",
+        ".vscode/**",
+        "dev/**",
+        "docs/**",
+        "scripts/**",
+        "tests/**",
+        "test/**",
+        "node_modules/**",
+        "build/**",
+        "dist/**",
+        "*.md",
+        "*.ps1",
+        "*.sh",
+        "*.log",
+        "*.tmp",
+        "*.bak"
+      ]
+    }
+  }
+}
