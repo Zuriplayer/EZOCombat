@@ -5,7 +5,7 @@ EZOCombat is an early public beta addon for **The Elder Scrolls Online** focused
 
 Current scope is intentionally small: the addon loads, applies English/Spanish localization, exposes a basic `/ezocombat` command, and documents the intended safety boundaries for future visual combat helpers. It does not automate combat.
 
-Support, bug reports, and suggestions: https://discord.gg/6DXmjWhCxd
+Support, bug reports, and suggestions: https://discord.gg/ekw8zUAcRm
 
 ## Beta Status
 
