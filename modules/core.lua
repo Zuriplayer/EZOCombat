@@ -18,8 +18,13 @@ local function Print(message)
 end
 
 local function LogInfo(message)
+    if ADDON._debugLoggerUnavailable == true then
+        return false
+    end
+
     local lib = _G.LibDebugLogger
     if type(lib) ~= "function" and type(lib) ~= "table" then
+        ADDON._debugLoggerUnavailable = true
         return false
     end
 
@@ -40,11 +45,13 @@ local function LogInfo(message)
 
     local logger = ADDON._debugLogger
     if logger and type(logger.Info) == "function" then
+        ADDON._debugLoggerUnavailable = false
         return pcall(function()
             logger:Info(tostring(message or ""))
         end)
     end
 
+    ADDON._debugLoggerUnavailable = true
     return false
 end
 
