@@ -10,6 +10,7 @@ local zo_strlower = zo_strlower
 local LOGGER_TAG = "EZOCombat"
 local LANGUAGE_INHERIT = "inherit"
 local languageCallbackRegistered = false
+local ezocoreRegistered = false
 
 local function Print(message)
     if CHAT_SYSTEM and type(CHAT_SYSTEM.AddMessage) == "function" then
@@ -119,6 +120,30 @@ function ADDON.RegisterEZOCoreLanguageCallback()
     return languageCallbackRegistered
 end
 
+function ADDON.RegisterWithEZOCore()
+    if ezocoreRegistered
+        or not (EZOCore and type(EZOCore.RegisterAddon) == "function") then
+        return false
+    end
+
+    local ok, result = pcall(function()
+        return EZOCore:RegisterAddon({
+            id = "ezocombat",
+            name = ADDON.name or "EZOCombat",
+            version = ADDON.version or "0.0.0",
+            addOnVersion = tonumber(ADDON.addOnVersion) or 0,
+            apiVersion = 1,
+            capabilities = {
+                "combat.research",
+                "family.language.consumer",
+            },
+        })
+    end)
+
+    ezocoreRegistered = ok and result == true
+    return ezocoreRegistered
+end
+
 function ADDON:Initialize()
     if self._initialized then
         return
@@ -128,6 +153,7 @@ function ADDON:Initialize()
 
     ADDON.ApplyLanguagePreference(LANGUAGE_INHERIT)
     self:RegisterEZOCoreLanguageCallback()
+    self:RegisterWithEZOCore()
 
     self:RegisterSlashCommands()
     LogInfo(GetString(SI_EZOCOMBAT_LOADED))
