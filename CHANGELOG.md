@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1-beta - 2026-07-14
+
+- Added optional `EZOCore` language preference inheritance with fallback to the ESO client language.
+- Registered an optional `EZOCore` language-change callback when the shared service is available.
+- Updated public documentation for the optional language integration.
+
 ## 0.1.0-beta - 2026-07-10
 
 - Prepared the addon for public beta publication.

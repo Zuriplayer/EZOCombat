@@ -9,7 +9,7 @@ Support, bug reports, and suggestions: https://discord.gg/ekw8zUAcRm
 
 ## Beta Status
 
-Version: `0.1.0-beta`
+Version: `0.1.1-beta`
 
 This beta is meant for public visibility, feedback, and controlled testing. Combat-helper feature work is still in design/prototype stage.
 
@@ -20,6 +20,8 @@ This beta is meant for public visibility, feedback, and controlled testing. Comb
 - Optional developer/debug addons:
   - `LibDebugLogger`
   - `DebugLogViewer`
+- Optional EZO-family integration:
+  - `EZOCore` for shared language preference inheritance, when installed
 
 No external runtime or third-party Lua library is required for normal use.
 
@@ -36,6 +38,7 @@ No external runtime or third-party Lua library is required for normal use.
 
 - Minimal addon bootstrap through `EVENT_ADD_ON_LOADED`.
 - English and Spanish runtime strings selected from the ESO client language.
+- Optional inherited language preference from `EZOCore`, with fallback to the ESO client language.
 - Load message confirming that no combat automation is active.
 - `/ezocombat` slash command that prints the current conceptual status.
 - Public documentation for future combat helper design.
@@ -60,12 +63,12 @@ These features are not implemented in this beta yet.
 
 EZOCombat currently does not perform combat actions. Future work must stay inside these limits:
 
-- cast abilities
-- change weapon bars automatically
-- run combat rotations
-- chain multiple skills from one input
-- simulate keyboard or gamepad input
-- automate synergy, interrupt, dodge, block, ultimate, or prebuff execution
+- no casting abilities
+- no automatic weapon bar changes
+- no combat rotations
+- no chaining multiple skills from one input
+- no keyboard or gamepad input simulation
+- no automated synergy, interrupt, dodge, block, ultimate, or prebuff execution
 
 The addon may provide visual information, reminders, and diagnostics. The player must still decide and perform all combat actions manually.
 
@@ -77,6 +80,7 @@ For this beta, verify:
 - the addon loads without Lua errors
 - `/reloadui` completes cleanly
 - the load message appears in the configured language
+- if `EZOCore` is installed, inherited language changes are reflected by EZOCombat
 - `/ezocombat` prints the localized status message
 - keyboard and gamepad controls behave exactly as they did before enabling the addon
 - no panel, overlay, keybind, or SavedVariables entry is created

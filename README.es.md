@@ -9,7 +9,7 @@ Soporte, errores y sugerencias: https://discord.gg/ekw8zUAcRm
 
 ## Estado Beta
 
-Versión: `0.1.0-beta`
+Versión: `0.1.1-beta`
 
 Esta beta está pensada para visibilidad pública, feedback y pruebas controladas. Las funciones de ayuda de combate siguen en fase de diseño/prototipo.
 
@@ -20,6 +20,8 @@ Esta beta está pensada para visibilidad pública, feedback y pruebas controlada
 - Addons opcionales para desarrollo/diagnóstico:
   - `LibDebugLogger`
   - `DebugLogViewer`
+- Integración opcional con la familia EZO:
+  - `EZOCore` para heredar la preferencia de idioma compartida, si está instalado
 
 No se necesita ningún runtime externo ni librería Lua de terceros para el uso normal.
 
@@ -36,6 +38,7 @@ No se necesita ningún runtime externo ni librería Lua de terceros para el uso 
 
 - Arranque mínimo del addon mediante `EVENT_ADD_ON_LOADED`.
 - Textos runtime en inglés y español según el idioma del cliente de ESO.
+- Preferencia de idioma heredada opcionalmente desde `EZOCore`, con fallback al idioma del cliente de ESO.
 - Mensaje de carga confirmando que no hay automatización de combate activa.
 - Comando `/ezocombat`, que muestra el estado conceptual actual.
 - Documentación pública para el diseño futuro de ayudas de combate.
@@ -77,6 +80,7 @@ Para esta beta, comprueba:
 - el addon carga sin errores Lua
 - `/reloadui` termina correctamente
 - el mensaje de carga aparece en el idioma configurado
+- si `EZOCore` está instalado, EZOCombat refleja los cambios de idioma heredados
 - `/ezocombat` muestra el mensaje de estado localizado
 - los controles de teclado y gamepad se comportan exactamente igual que antes de activar el addon
 - no se crea ningún panel, overlay, atajo de teclado ni entrada de SavedVariables

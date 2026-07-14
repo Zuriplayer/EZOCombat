@@ -2,8 +2,8 @@ EZOCombat = EZOCombat or {}
 local ADDON = EZOCombat
 
 ADDON.name = "EZOCombat"
-ADDON.version = "0.1.0-beta"
-ADDON.addOnVersion = 100
+ADDON.version = "0.1.1-beta"
+ADDON.addOnVersion = 101
 ADDON.modules = ADDON.modules or {}
 ADDON._initialized = false
 

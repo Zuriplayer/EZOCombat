@@ -8,6 +8,8 @@ local tostring = tostring
 local type = type
 local zo_strlower = zo_strlower
 local LOGGER_TAG = "EZOCombat"
+local LANGUAGE_INHERIT = "inherit"
+local languageCallbackRegistered = false
 
 local function Print(message)
     if CHAT_SYSTEM and type(CHAT_SYSTEM.AddMessage) == "function" then
@@ -61,6 +63,52 @@ function ADDON:RegisterSlashCommands()
     end
 end
 
+function ADDON:GetClientLanguage()
+    local language = zo_strlower(tostring(GetCVar("Language.2") or ""))
+    return language == "es" and "es" or "en"
+end
+
+function ADDON:GetEffectiveLanguage(language)
+    language = tostring(language or LANGUAGE_INHERIT)
+    if language == LANGUAGE_INHERIT then
+        if EZOCore and type(EZOCore.GetLanguage) == "function" then
+            local ok, inherited = pcall(function()
+                return EZOCore:GetLanguage()
+            end)
+            if ok and (inherited == "es" or inherited == "en") then
+                return inherited
+            end
+        end
+        return self:GetClientLanguage()
+    end
+    if language == "es" or language == "en" then
+        return language
+    end
+    return self:GetClientLanguage()
+end
+
+function ADDON:ApplyLanguagePreference(language)
+    if EZOCombat_Lang and type(EZOCombat_Lang.Apply) == "function" then
+        EZOCombat_Lang.Apply(self:GetEffectiveLanguage(language))
+    end
+end
+
+function ADDON:RegisterEZOCoreLanguageCallback()
+    if languageCallbackRegistered
+        or not (EZOCore and type(EZOCore.RegisterCallback) == "function") then
+        return false
+    end
+
+    local eventName = EZOCore.EVENT_LANGUAGE_CHANGED or "EZO_CORE_LANGUAGE_CHANGED"
+    local ok, result = pcall(function()
+        return EZOCore:RegisterCallback(eventName, function()
+            self:ApplyLanguagePreference(LANGUAGE_INHERIT)
+        end)
+    end)
+    languageCallbackRegistered = ok and result == true
+    return languageCallbackRegistered
+end
+
 function ADDON:Initialize()
     if self._initialized then
         return
@@ -68,10 +116,8 @@ function ADDON:Initialize()
 
     self._initialized = true
 
-    if EZOCombat_Lang and type(EZOCombat_Lang.Apply) == "function" then
-        local language = zo_strlower(tostring(GetCVar("Language.2") or ""))
-        EZOCombat_Lang.Apply(language == "es" and "es" or "en")
-    end
+    self:ApplyLanguagePreference(LANGUAGE_INHERIT)
+    self:RegisterEZOCoreLanguageCallback()
 
     self:RegisterSlashCommands()
     LogInfo(GetString(SI_EZOCOMBAT_LOADED))
