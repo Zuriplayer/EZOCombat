@@ -57,43 +57,53 @@ local function LogInfo(message)
     return false
 end
 
-function ADDON:RegisterSlashCommands()
+function ADDON.RegisterSlashCommands()
     SLASH_COMMANDS["/ezocombat"] = function()
         Print(GetString(SI_EZOCOMBAT_USAGE))
     end
 end
 
-function ADDON:GetClientLanguage()
+function ADDON.GetClientLanguage()
     local language = zo_strlower(tostring(GetCVar("Language.2") or ""))
     return language == "es" and "es" or "en"
 end
 
-function ADDON:GetEffectiveLanguage(language)
+function ADDON.GetEffectiveLanguage(language)
     language = tostring(language or LANGUAGE_INHERIT)
-    if language == LANGUAGE_INHERIT then
-        if EZOCore and type(EZOCore.GetLanguage) == "function" then
-            local ok, inherited = pcall(function()
-                return EZOCore:GetLanguage()
-            end)
-            if ok and (inherited == "es" or inherited == "en") then
-                return inherited
-            end
+    if ADDON.IsLanguageManagedByEZOCore and ADDON.IsLanguageManagedByEZOCore() then
+        local ok, inherited = pcall(function()
+            return EZOCore:GetLanguage()
+        end)
+        if ok and (inherited == "es" or inherited == "en") then
+            return inherited
         end
-        return self:GetClientLanguage()
+    end
+    if language == LANGUAGE_INHERIT then
+        return ADDON.GetClientLanguage()
     end
     if language == "es" or language == "en" then
         return language
     end
-    return self:GetClientLanguage()
+    return ADDON.GetClientLanguage()
 end
 
-function ADDON:ApplyLanguagePreference(language)
+function ADDON.IsLanguageManagedByEZOCore()
+    if not (EZOCore and type(EZOCore.IsLanguageGloballyManaged) == "function") then
+        return false
+    end
+    local ok, managed = pcall(function()
+        return EZOCore:IsLanguageGloballyManaged()
+    end)
+    return ok and managed == true
+end
+
+function ADDON.ApplyLanguagePreference(language)
     if EZOCombat_Lang and type(EZOCombat_Lang.Apply) == "function" then
-        EZOCombat_Lang.Apply(self:GetEffectiveLanguage(language))
+        EZOCombat_Lang.Apply(ADDON.GetEffectiveLanguage(language))
     end
 end
 
-function ADDON:RegisterEZOCoreLanguageCallback()
+function ADDON.RegisterEZOCoreLanguageCallback()
     if languageCallbackRegistered
         or not (EZOCore and type(EZOCore.RegisterCallback) == "function") then
         return false
@@ -102,7 +112,7 @@ function ADDON:RegisterEZOCoreLanguageCallback()
     local eventName = EZOCore.EVENT_LANGUAGE_CHANGED or "EZO_CORE_LANGUAGE_CHANGED"
     local ok, result = pcall(function()
         return EZOCore:RegisterCallback(eventName, function()
-            self:ApplyLanguagePreference(LANGUAGE_INHERIT)
+            ADDON.ApplyLanguagePreference(LANGUAGE_INHERIT)
         end)
     end)
     languageCallbackRegistered = ok and result == true
@@ -116,7 +126,7 @@ function ADDON:Initialize()
 
     self._initialized = true
 
-    self:ApplyLanguagePreference(LANGUAGE_INHERIT)
+    ADDON.ApplyLanguagePreference(LANGUAGE_INHERIT)
     self:RegisterEZOCoreLanguageCallback()
 
     self:RegisterSlashCommands()

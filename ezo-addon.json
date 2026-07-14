@@ -4,6 +4,7 @@
     "id": "ezocombat",
     "name": "EZOCombat",
     "version": "0.1.1-beta",
+    "stage": "beta",
     "status": "beta",
     "phase": "public-beta",
     "visibility": "public",
