@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2-beta - 2026-07-19
+
+- Expanded the manifest description so ESO's Add-ons screen lists the optional diagnostics and EZOCore integrations.
+
 ## 0.1.1-beta - 2026-07-14
 
 - Added optional `EZOCore` language preference inheritance with fallback to the ESO client language.

@@ -1,8 +1,8 @@
 ## Title: E|cB040FFZ|rOCombat
-## Description: Concept notebook for future EZO combat bindings, alerts, and automation-safe research.
+## Description: Concept notebook for future EZO combat bindings, alerts, and automation-safe research. Optional add-ons: LibDebugLogger, DebugLogViewer, EZOCore.
 ## Author: @Zuriplayer
-## Version: 0.1.1-beta
-## AddOnVersion: 101
+## Version: 0.1.2-beta
+## AddOnVersion: 102
 ## APIVersion: 101049 101050
 ## OptionalDependsOn: LibDebugLogger DebugLogViewer EZOCore
 
