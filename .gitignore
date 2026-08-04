@@ -46,3 +46,7 @@ release/
 releases/
 *.7z
 *.rar
+
+# Keep shared AI project instructions versioned.
+!AGENTS.md
+!CLAUDE.md
