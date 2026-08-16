@@ -1,13 +1,24 @@
 ## Title: E|cB040FFZ|rOCombat
-## Description: Concept notebook for future EZO combat bindings, alerts, and automation-safe research. Optional add-ons: LibDebugLogger, DebugLogViewer, EZOCore.
+## Description: Visual action-bar helper with manual HUD icons and P1-P5 display ordering. Optional add-ons: LibDebugLogger, DebugLogViewer, EZOCore.
 ## Author: @Zuriplayer
-## Version: 0.1.2-beta
-## AddOnVersion: 102
+## Version: 0.2.21-beta
+## AddOnVersion: 221
 ## APIVersion: 101049 101050
+## DependsOn: LibAddonMenu-2.0
 ## OptionalDependsOn: LibDebugLogger DebugLogViewer EZOCore
+## SavedVariables: EZOCombat_Saved
 
 lang/en.lua
 lang/es.lua
 modules/i18n.lua
 EZOCombat.lua
+modules/saved_vars.lua
+modules/context.lua
+modules/ability_state.lua
+modules/action_bars.lua
+modules/priority.lua
+modules/overlays.lua
+modules/window.lua
+modules/menu.lua
 modules/core.lua
+Bindings.xml

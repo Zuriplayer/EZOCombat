@@ -1,0 +1,7 @@
+<Bindings>
+  <Layer name="E|cB040FFZ|rO AddOns">
+    <Category name="E|cB040FFZ|rOCombat">
+      <Action name="EZO_COMBAT_TOGGLE_WINDOW"><Down>EZOCombat_ToggleWindow()</Down></Action>
+    </Category>
+  </Layer>
+</Bindings>

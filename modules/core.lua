@@ -11,6 +11,7 @@ local LOGGER_TAG = "EZOCombat"
 local LANGUAGE_INHERIT = "inherit"
 local languageCallbackRegistered = false
 local ezocoreRegistered = false
+local debugControllerRegistered = false
 
 local function Print(message)
     if CHAT_SYSTEM and type(CHAT_SYSTEM.AddMessage) == "function" then
@@ -19,6 +20,8 @@ local function Print(message)
         d(message)
     end
 end
+
+ADDON.Print = Print
 
 local function LogInfo(message)
     if ADDON._debugLoggerUnavailable == true then
@@ -60,8 +63,64 @@ end
 
 function ADDON.RegisterSlashCommands()
     SLASH_COMMANDS["/ezocombat"] = function()
-        Print(GetString(SI_EZOCOMBAT_USAGE))
+        if ADDON.Window and type(ADDON.Window.Toggle) == "function" then
+            ADDON.Window.Toggle()
+        else
+            Print(GetString(SI_EZOCOMBAT_USAGE))
+        end
     end
+    SLASH_COMMANDS["/ezocombatdebug"] = function()
+        ADDON.RunDebugSnapshot()
+    end
+end
+
+function ADDON.IsDebugModeEnabled()
+    return ADDON.sv and ADDON.sv.general and ADDON.sv.general.debugMode == true
+end
+
+function ADDON.SetDebugModeEnabled(enabled)
+    if not (ADDON.sv and ADDON.sv.general) then
+        return false
+    end
+    ADDON.sv.general.debugMode = enabled == true
+    return ADDON.sv.general.debugMode == (enabled == true)
+end
+
+function ADDON.DebugLog(message)
+    if not ADDON.IsDebugModeEnabled() then
+        return false
+    end
+    local text = "[EZOCombat] " .. tostring(message or "")
+    local logged = LogInfo(text)
+    if ADDON.sv.general.debugChat == true or not logged then
+        Print("|cB040FF" .. text .. "|r")
+    end
+    return logged
+end
+
+function ADDON.RunDebugSnapshot()
+    if not ADDON.IsDebugModeEnabled() then
+        Print(GetString(SI_EZOCOMBAT_DEBUG_DISABLED))
+        return false
+    end
+
+    ADDON.DebugLog("snapshot begin")
+    if ADDON.ActionBars and type(ADDON.ActionBars.DebugSnapshot) == "function" then
+        ADDON.ActionBars.DebugSnapshot()
+    end
+    if ADDON.Priority and type(ADDON.Priority.DebugSnapshot) == "function" then
+        ADDON.Priority.DebugSnapshot()
+    end
+    if ADDON.Window and type(ADDON.Window.DebugSnapshot) == "function" then
+        ADDON.Window.DebugSnapshot()
+    end
+    ADDON.DebugLog("snapshot end")
+    if ADDON._debugLoggerUnavailable == true then
+        Print(GetString(SI_EZOCOMBAT_DEBUG_CHAT_FALLBACK))
+    else
+        Print(GetString(SI_EZOCOMBAT_DEBUG_CAPTURED))
+    end
+    return true
 end
 
 function ADDON.GetClientLanguage()
@@ -135,13 +194,41 @@ function ADDON.RegisterWithEZOCore()
             apiVersion = 1,
             capabilities = {
                 "combat.research",
+                "combat.visual-assistance",
+                "family.debug.controller",
                 "family.language.consumer",
+                "family.settings.consumer",
             },
         })
     end)
 
     ezocoreRegistered = ok and result == true
     return ezocoreRegistered
+end
+
+function ADDON.RegisterDebugWithEZOCore()
+    if debugControllerRegistered
+        or not (EZOCore and type(EZOCore.GetService) == "function") then
+        return false
+    end
+    local service = EZOCore:GetService("family.debug", 1)
+    if not service or type(service.RegisterController) ~= "function" then
+        return false
+    end
+    local ok, result = pcall(function()
+        return service:RegisterController({
+            id = "ezocombat.debug",
+            addonId = "ezocombat",
+            addonName = "EZOCombat",
+            name = function() return GetString(SI_EZOCOMBAT_DEBUG_MODE) end,
+            isEnabled = ADDON.IsDebugModeEnabled,
+            setEnabled = function(enabled)
+                return ADDON.SetDebugModeEnabled(enabled == true)
+            end,
+        })
+    end)
+    debugControllerRegistered = ok and result == true
+    return debugControllerRegistered
 end
 
 function ADDON:Initialize()
@@ -151,9 +238,36 @@ function ADDON:Initialize()
 
     self._initialized = true
 
+    if self.SavedVars and type(self.SavedVars.Init) == "function" then
+        self.SavedVars.Init()
+    end
+    if self.Context and type(self.Context.Init) == "function" then
+        self.Context.Init()
+    end
+
     ADDON.ApplyLanguagePreference(LANGUAGE_INHERIT)
     self:RegisterEZOCoreLanguageCallback()
     self:RegisterWithEZOCore()
+    self:RegisterDebugWithEZOCore()
+
+    if self.AbilityState and type(self.AbilityState.Init) == "function" then
+        self.AbilityState.Init()
+    end
+    if self.ActionBars and type(self.ActionBars.Init) == "function" then
+        self.ActionBars.Init()
+    end
+    if self.Priority and type(self.Priority.Init) == "function" then
+        self.Priority.Init()
+    end
+    if self.Overlays and type(self.Overlays.Init) == "function" then
+        self.Overlays.Init()
+    end
+    if self.Window and type(self.Window.Init) == "function" then
+        self.Window.Init()
+    end
+    if self.Settings and type(self.Settings.Init) == "function" then
+        self.Settings.Init()
+    end
 
     self:RegisterSlashCommands()
     LogInfo(GetString(SI_EZOCOMBAT_LOADED))
