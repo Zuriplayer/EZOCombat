@@ -72,6 +72,67 @@ function Context.GetClassLabel()
     return string.format("%s %d", GetString(SI_EZOCOMBAT_CLASS), Context.GetClassId())
 end
 
+local function IsRadialMenuShown(menu)
+    if not menu or type(menu.IsShown) ~= "function" then
+        return false
+    end
+    local ok, shown = pcall(menu.IsShown, menu)
+    return ok and shown == true
+end
+
+local function IsRadialControllerShown(controller)
+    return controller
+        and (IsRadialMenuShown(controller.menu) or IsRadialMenuShown(controller.radialMenu))
+end
+
+function Context.IsHudOverlayBlocked()
+    if INTERACTIVE_WHEEL_MANAGER and type(INTERACTIVE_WHEEL_MANAGER.IsInteracting) == "function" then
+        local ok, interacting = pcall(INTERACTIVE_WHEEL_MANAGER.IsInteracting, INTERACTIVE_WHEEL_MANAGER)
+        if ok and interacting == true then
+            return true
+        end
+    end
+
+    local controllers = {
+        _G.UTILITY_WHEEL_KEYBOARD,
+        _G.UTILITY_WHEEL_GAMEPAD,
+        _G.FISHING_KEYBOARD,
+        _G.FISHING_GAMEPAD,
+        _G.TARGET_MARKER_WHEEL_KEYBOARD,
+        _G.TARGET_MARKER_WHEEL_GAMEPAD,
+        _G.ACCESSIBLE_ASSIGNABLE_UTILITY_WHEEL_GAMEPAD,
+    }
+    for _, controller in ipairs(controllers) do
+        if IsRadialControllerShown(controller) then
+            return true
+        end
+    end
+
+    if PLAYER_TO_PLAYER then
+        if IsRadialMenuShown(PLAYER_TO_PLAYER.gamepadMenu)
+            or IsRadialMenuShown(PLAYER_TO_PLAYER.keyboardMenu) then
+            return true
+        end
+    end
+
+    return false
+end
+
+function Context.RefreshHudVisibility()
+    local blocked = Context.IsHudOverlayBlocked()
+    if Context._hudOverlayBlocked == blocked then
+        return
+    end
+    Context._hudOverlayBlocked = blocked
+
+    if ADDON.Overlays and type(ADDON.Overlays.Refresh) == "function" then
+        ADDON.Overlays.Refresh()
+    end
+    if ADDON.Window and type(ADDON.Window.RefreshVisibility) == "function" then
+        ADDON.Window.RefreshVisibility()
+    end
+end
+
 function Context.GetActiveProfile()
     if not ADDON.SavedVars or type(ADDON.SavedVars.GetProfile) ~= "function" then
         return nil
@@ -101,6 +162,9 @@ function Context.Init()
     Context._activeRole = Context.GetActiveRole()
     EVENT_MANAGER:RegisterForEvent(ADDON.name .. "RoleContext", EVENT_ACTIVITY_FINDER_STATUS_UPDATE, Context.Refresh)
     EVENT_MANAGER:RegisterForEvent(ADDON.name .. "RoleActivated", EVENT_PLAYER_ACTIVATED, Context.Refresh)
+    if EVENT_MANAGER and type(EVENT_MANAGER.RegisterForUpdate) == "function" then
+        EVENT_MANAGER:RegisterForUpdate(ADDON.name .. "HudVisibility", 100, Context.RefreshHudVisibility)
+    end
 
     -- Keyboard preferred-role controls publish this callback when the player
     -- changes the Group Finder role. The fallback events cover other clients.

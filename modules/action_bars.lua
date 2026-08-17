@@ -82,7 +82,13 @@ local function GetEntriesForAbility(abilityId)
     local matches = {}
     for _, entries in pairs(ActionBars.bars or {}) do
         for _, entry in ipairs(entries) do
-            if entry.abilityId == abilityId then
+            local equivalent = entry.abilityId == abilityId
+            if not equivalent
+                and ADDON.AbilityState
+                and type(ADDON.AbilityState.AreAbilityIdsEquivalent) == "function" then
+                equivalent = ADDON.AbilityState.AreAbilityIdsEquivalent(entry.abilityId, abilityId)
+            end
+            if equivalent then
                 matches[#matches + 1] = entry
             end
         end
@@ -270,12 +276,24 @@ end
 
 function ActionBars.Init()
     ActionBars.Refresh("init")
-    EVENT_MANAGER:RegisterForEvent(ADDON.name .. "ActionSlots", EVENT_ACTION_SLOT_UPDATED, function()
-        ActionBars.Refresh("action-slot-updated")
-    end)
+    if EVENT_ACTION_SLOT_UPDATED then
+        EVENT_MANAGER:RegisterForEvent(ADDON.name .. "ActionSlots", EVENT_ACTION_SLOT_UPDATED, function()
+            ActionBars.Refresh("action-slot-updated")
+        end)
+    end
+    if EVENT_HOTBAR_SLOT_UPDATED and EVENT_HOTBAR_SLOT_UPDATED ~= EVENT_ACTION_SLOT_UPDATED then
+        EVENT_MANAGER:RegisterForEvent(ADDON.name .. "HotbarSlots", EVENT_HOTBAR_SLOT_UPDATED, function()
+            ActionBars.Refresh("hotbar-slot-updated")
+        end)
+    end
     EVENT_MANAGER:RegisterForEvent(ADDON.name .. "ActionBar", EVENT_ACTION_SLOTS_ACTIVE_HOTBAR_UPDATED, function()
         ActionBars.Refresh("active-hotbar-updated")
     end)
+    if EVENT_ACTION_SLOTS_ALL_HOTBARS_UPDATED then
+        EVENT_MANAGER:RegisterForEvent(ADDON.name .. "AllActionBars", EVENT_ACTION_SLOTS_ALL_HOTBARS_UPDATED, function()
+            ActionBars.Refresh("all-hotbars-updated")
+        end)
+    end
     EVENT_MANAGER:RegisterForEvent(ADDON.name .. "PlayerActivated", EVENT_PLAYER_ACTIVATED, function()
         if ADDON.AbilityState and type(ADDON.AbilityState.RebuildPlayerEffects) == "function" then
             ADDON.AbilityState.RebuildPlayerEffects()

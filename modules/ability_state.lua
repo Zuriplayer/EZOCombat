@@ -23,11 +23,42 @@ AbilityState.effectsReadable = AbilityState.effectsReadable == true
 
 local PROVIDERS = {
     [86156] = { source = AbilityState.SOURCE_SLOT_TIMER }, -- Arctic Blast
+    [117690] = { source = AbilityState.SOURCE_SLOT_TIMER }, -- Blighted Blastbones; zero is valid inactive evidence from first load
     [92163] = { source = AbilityState.SOURCE_TOGGLE }, -- Warden bear ultimate
     [217699] = { source = AbilityState.SOURCE_TOGGLE }, -- Banner Bearer
     [86019] = { source = AbilityState.SOURCE_PREDICTED, durationMs = 6000 },
     [93778] = { source = AbilityState.SOURCE_PREDICTED, durationMs = 9000 },
 }
+
+-- ESO can expose different IDs for the same slotted ability family while a
+-- chained or greyed-out state is displayed. Keep these families explicit and
+-- conservative: names and icons are not reliable identity keys, and an
+-- unverified grouping could merge two different skills. The first ID is the
+-- stable tracker identity; the other IDs are native state/effect variants.
+local ABILITY_FAMILIES = {
+    { 114860, 117330, 114861 }, -- Blastbones
+    { 117690, 117693, 117691 }, -- Blighted Blastbones
+    { 117749, 117773, 117750 }, -- Stalking Blastbones
+}
+local ABILITY_FAMILY_BY_ID = {}
+for _, family in ipairs(ABILITY_FAMILIES) do
+    local stableId = tonumber(family[1]) or 0
+    if stableId ~= 0 then
+        for _, abilityId in ipairs(family) do
+            ABILITY_FAMILY_BY_ID[tonumber(abilityId) or 0] = stableId
+        end
+    end
+end
+
+function AbilityState.NormalizeAbilityId(abilityId)
+    abilityId = tonumber(abilityId) or 0
+    return ABILITY_FAMILY_BY_ID[abilityId] or abilityId
+end
+
+function AbilityState.AreAbilityIdsEquivalent(firstAbilityId, secondAbilityId)
+    return AbilityState.NormalizeAbilityId(firstAbilityId)
+        == AbilityState.NormalizeAbilityId(secondAbilityId)
+end
 
 local function DebugLog(message)
     if ADDON.DebugLog then
@@ -58,7 +89,7 @@ local function GetCapabilities(abilityId)
         return {}
     end
     state.capabilities = state.capabilities or {}
-    local key = tostring(tonumber(abilityId) or 0)
+    local key = tostring(AbilityState.NormalizeAbilityId(abilityId))
     state.capabilities[key] = state.capabilities[key] or {}
     return state.capabilities[key]
 end
@@ -73,7 +104,7 @@ local function MarkCapability(abilityId, capability)
 end
 
 function AbilityState.RegisterProvider(abilityId, provider)
-    abilityId = tonumber(abilityId) or 0
+    abilityId = AbilityState.NormalizeAbilityId(abilityId)
     if abilityId == 0 or type(provider) ~= "table" or type(provider.source) ~= "string" then
         return false
     end
@@ -154,11 +185,11 @@ end
 local function FindActiveEffect(abilityId, provider)
     local acceptedIds = { [abilityId] = true }
     for _, effectId in ipairs(provider and provider.effectIds or {}) do
-        acceptedIds[tonumber(effectId) or 0] = true
+        acceptedIds[AbilityState.NormalizeAbilityId(effectId)] = true
     end
 
     for _, effect in pairs(AbilityState.activeEffects) do
-        if acceptedIds[effect.abilityId]
+        if acceptedIds[AbilityState.NormalizeAbilityId(effect.abilityId)]
             and effect.castByPlayer ~= false
             and IsEffectCurrent(effect) then
             return effect
@@ -168,12 +199,18 @@ local function FindActiveEffect(abilityId, provider)
 end
 
 local function GetPrediction(abilityId)
+    abilityId = AbilityState.NormalizeAbilityId(abilityId)
     local provider = PROVIDERS[abilityId]
     if not provider or provider.source ~= AbilityState.SOURCE_PREDICTED then
         return nil
     end
 
-    local remaining = (tonumber(AbilityState.predictions[abilityId]) or 0) - GetNowMilliseconds()
+    local expiresAt = tonumber(AbilityState.predictions[abilityId])
+    if not expiresAt then
+        return nil
+    end
+
+    local remaining = expiresAt - GetNowMilliseconds()
     if remaining > 0 then
         return true, remaining, provider.durationMs
     end
@@ -228,7 +265,7 @@ local function NewState(abilityId, entries)
 end
 
 function AbilityState.Resolve(abilityId, entries)
-    abilityId = tonumber(abilityId) or 0
+    abilityId = AbilityState.NormalizeAbilityId(abilityId)
     entries = entries or {}
     local state = NewState(abilityId, entries)
     if abilityId == 0 or #entries == 0 then
@@ -265,6 +302,29 @@ function AbilityState.Resolve(abilityId, entries)
         state.phase = AbilityState.PHASE_INACTIVE
         state.source = AbilityState.SOURCE_TOGGLE
         state.confidence = "observed"
+        return state
+    end
+
+    -- Explicit predicted providers cover abilities whose native slot signal
+    -- is incomplete or represents a different cycle. They must win while a
+    -- cast prediction exists, and when it expires, before the partial native
+    -- timer can classify the ability as active again.
+    local predicted, predictedRemaining, predictedDuration = GetPrediction(abilityId)
+    if predicted == true then
+        state.active = true
+        state.timing = true
+        state.remainingMs = predictedRemaining
+        state.durationMs = predictedDuration
+        state.phase = AbilityState.PHASE_ACTIVE_TIMED
+        state.source = AbilityState.SOURCE_PREDICTED
+        state.confidence = "predicted"
+        return state
+    end
+    if predicted == false then
+        state.active = false
+        state.phase = AbilityState.PHASE_INACTIVE
+        state.source = AbilityState.SOURCE_PREDICTED
+        state.confidence = "predicted"
         return state
     end
 
@@ -331,25 +391,6 @@ function AbilityState.Resolve(abilityId, entries)
         return state
     end
 
-    local predicted, predictedRemaining, predictedDuration = GetPrediction(abilityId)
-    if predicted == true then
-        state.active = true
-        state.timing = true
-        state.remainingMs = predictedRemaining
-        state.durationMs = predictedDuration
-        state.phase = AbilityState.PHASE_ACTIVE_TIMED
-        state.source = AbilityState.SOURCE_PREDICTED
-        state.confidence = "predicted"
-        return state
-    end
-    if predicted == false then
-        state.active = false
-        state.phase = AbilityState.PHASE_INACTIVE
-        state.source = AbilityState.SOURCE_PREDICTED
-        state.confidence = "predicted"
-        return state
-    end
-
     if hasTimerReader
         and (capabilities.slotTimer == true or (provider and provider.source == AbilityState.SOURCE_SLOT_TIMER)) then
         state.active = false
@@ -367,7 +408,7 @@ function AbilityState.Resolve(abilityId, entries)
 end
 
 function AbilityState.StartPrediction(abilityId)
-    abilityId = tonumber(abilityId) or 0
+    abilityId = AbilityState.NormalizeAbilityId(abilityId)
     local provider = PROVIDERS[abilityId]
     if not provider or provider.source ~= AbilityState.SOURCE_PREDICTED then
         return false

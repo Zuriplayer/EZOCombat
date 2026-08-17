@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.26-beta - 2026-08-17
+
+- Seed Blighted Blastbones' initial inactive state from its verified readable zero slot timer, so the first cast is no longer required to learn the negative evidence.
+
+## 0.2.25-beta - 2026-08-17
+
+- Match verified native state variants through stable ability identities, fixing inactive tracking for Blighted Blastbones and the corresponding Blastbones families.
+
+## 0.2.24-beta - 2026-08-16
+
+- Hide EZOCombat HUD icons and the configuration window while ESO interactive radial or utility wheels are open, then restore them when the wheel closes.
+
+## 0.2.23-beta - 2026-08-16
+
+- Give the explicit Deep Fissure predicted provider precedence over incomplete native slot timing, so its active and inactive conditions follow the verified nine-second window.
+
 ## 0.2.21-beta - 2026-08-16
 
 - Added a session-only `Show all configured` checkbox to the EZOCombat action-bar window.

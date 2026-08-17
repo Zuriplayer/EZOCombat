@@ -21,6 +21,9 @@ local function IsHudScene()
     return SCENE_MANAGER
         and type(SCENE_MANAGER.IsShowing) == "function"
         and (SCENE_MANAGER:IsShowing("hud") or SCENE_MANAGER:IsShowing("hudui"))
+        and not (ADDON.Context
+            and type(ADDON.Context.IsHudOverlayBlocked) == "function"
+            and ADDON.Context.IsHudOverlayBlocked())
 end
 
 local function SavedWindow()
@@ -431,6 +434,24 @@ function Window.RefreshBars()
             slot.marker:SetText(entry.isUltimate and "U" or tostring(index))
         end
     end
+
+    -- Rebind the selected entry to the fresh capture. A slot can be replaced
+    -- while the window is open; retaining the old table would leave the
+    -- details panel editing an ability that is no longer in that slot.
+    local selected = Window.selectedEntry
+    if selected then
+        local selectedBar = Window.bars[selected.hotbar]
+        local currentEntry
+        for _, slot in ipairs(selectedBar and selectedBar.slots or {}) do
+            local entry = slot.entry
+            if entry and entry.slotIndex == selected.slotIndex then
+                currentEntry = entry
+                break
+            end
+        end
+        Window.selectedEntry = currentEntry and currentEntry.abilityId ~= 0 and currentEntry or nil
+    end
+
     Window.RefreshSelectionVisuals()
     Window.RefreshDetails()
 end
@@ -536,7 +557,11 @@ function Window.Show()
     Window.Create()
     Window.requestedVisible = true
     Window.RefreshContext()
-    Window.RefreshBars()
+    if ADDON.ActionBars and type(ADDON.ActionBars.Refresh) == "function" then
+        ADDON.ActionBars.Refresh("window-show")
+    else
+        Window.RefreshBars()
+    end
     Window.RefreshVisibility()
     if IsHudScene() and SCENE_MANAGER and type(SCENE_MANAGER.SetInUIMode) == "function" then
         SCENE_MANAGER:SetInUIMode(true, false)

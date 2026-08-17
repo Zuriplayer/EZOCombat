@@ -13,6 +13,9 @@ local function IsHudScene()
     return SCENE_MANAGER
         and type(SCENE_MANAGER.IsShowing) == "function"
         and (SCENE_MANAGER:IsShowing("hud") or SCENE_MANAGER:IsShowing("hudui"))
+        and not (ADDON.Context
+            and type(ADDON.Context.IsHudOverlayBlocked) == "function"
+            and ADDON.Context.IsHudOverlayBlocked())
 end
 
 local function GetAbilityDetails(abilityId)

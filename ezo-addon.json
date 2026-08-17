@@ -3,7 +3,7 @@
   "addon": {
     "id": "ezocombat",
     "name": "EZOCombat",
-    "version": "0.2.21-beta",
+    "version": "0.2.26-beta",
     "stage": "development",
     "status": "beta",
     "phase": "public-beta",
@@ -11,7 +11,7 @@
     "manifest": "EZOCombat.txt",
     "package": {
       "rootFolderName": "EZOCombat",
-      "zipName": "EZOCombat_v0.2.21-beta.zip",
+      "zipName": "EZOCombat_v0.2.26-beta.zip",
       "outputPath": "dist",
       "include": [
         "*.txt",

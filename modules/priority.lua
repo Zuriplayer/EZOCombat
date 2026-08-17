@@ -49,6 +49,27 @@ local function TrackerId(abilityId)
     return "ability-" .. tostring(tonumber(abilityId) or 0)
 end
 
+local function FindEquivalentTracker(profile, abilityId)
+    if not profile or not profile.trackers then
+        return nil
+    end
+
+    local exact = profile.trackers[TrackerId(abilityId)]
+    if exact then
+        return exact
+    end
+
+    if ADDON.AbilityState
+        and type(ADDON.AbilityState.AreAbilityIdsEquivalent) == "function" then
+        for _, tracker in pairs(profile.trackers) do
+            if ADDON.AbilityState.AreAbilityIdsEquivalent(tracker.abilityId, abilityId) then
+                return tracker
+            end
+        end
+    end
+    return nil
+end
+
 function Priority.GetProfile()
     return ADDON.Context and ADDON.Context.GetActiveProfile and ADDON.Context.GetActiveProfile() or nil
 end
@@ -78,7 +99,7 @@ end
 
 function Priority.GetTracker(abilityId)
     local profile = Priority.GetProfile()
-    return profile and profile.trackers and profile.trackers[TrackerId(abilityId)] or nil
+    return FindEquivalentTracker(profile, abilityId)
 end
 
 function Priority.EnsureTracker(entry)
@@ -88,7 +109,7 @@ function Priority.EnsureTracker(entry)
     end
 
     local id = TrackerId(entry.abilityId)
-    local tracker = profile.trackers[id]
+    local tracker = FindEquivalentTracker(profile, entry.abilityId)
     if not tracker then
         tracker = {
             id = id,

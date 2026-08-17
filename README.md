@@ -45,6 +45,8 @@ This functional beta provides the persistent UI, priority foundation, and a laye
 - Hotbar-specific effective ability IDs are resolved for each bar, preventing weapon-dependent variants such as Blockade of Fire from changing tracked identity after a weapon swap.
 - Visibility conditions: while slotted; while active and slotted; and while inactive and slotted. Normal ultimates use ready-to-cast as their active state.
 - Layered state evidence from native slot timers, native toggles, same-ID effects on the player, ultimate resource readiness, and explicit per-ability providers. Missing API data remains `UNKNOWN` and does not count as inactive.
+- Verified state-variant ability-ID families are matched through a stable identity, so chained or greyed-out native IDs do not break slotted, active, or inactive tracking. New families are added only after their IDs are confirmed in ESO.
+- Blighted Blastbones has an explicit native slot-timer provider, so a readable zero timer can establish its initial inactive state before the first cast; this bootstrap rule is reserved for abilities with a verified native negative signal.
 - Positive native toggle state is accepted and learned even when ESO omits toggle metadata. Banner Bearer (`217699`) and the configured Warden bear ultimate (`92163`) also have explicit toggle providers.
 - Persisted capability learning: after EZOCombat observes a real slot timer or same-ID player effect for an ability, it can use that provider's later absence as reliable inactive evidence.
 - Verified timed activity for Warden Subterranean Assault and Deep Fissure, including their 6-second and 9-second active windows.
@@ -92,9 +94,14 @@ Verify in ESO:
 - the window opens from LAM, `/ezocombat`, and an assigned binding;
 - keyboard, mouse, gamepad, chat/Enter, ESC, and normal menus retain their native behavior;
 - both bars show five normal slots and an ultimate;
+- changing a slotted ability refreshes the action-bar window immediately and after closing and reopening it;
 - a tracked icon disappears when its ability is removed from both bars;
 - Blockade of Fire and other hotbar-overridden abilities retain their tracked identity and eligible icon after swapping away from their bar;
+- Blighted Blastbones, Blastbones, and Stalking Blastbones remain matched when ESO changes their native slot ID between normal and greyed-out states, including the inactive condition;
+- Blighted Blastbones shows its inactive tracker on the first load when its native slot timer is readable, without requiring a prior cast;
+- Deep Fissure remains active for its verified nine-second predicted window and becomes inactive when that window expires, without being overridden by a partial native slot timer;
 - Arctic Blast and other native timed skills become active while their slot counter is positive and inactive after expiry; the observed timer capability remains available after `/reloadui`;
+- EZOCombat HUD icons and the configuration window hide while ESO's interactive radial or utility wheels are open and return when the wheel closes;
 - toggled abilities follow `IsAbilityDurationToggled` plus `IsSlotToggled`, while normal ultimate active and inactive mean ready and not ready to cast;
 - Banner Bearer is active only while its native slot toggle is on and becomes inactive when the banner is disabled;
 - skills without a verified provider remain `UNKNOWN` rather than appearing as inactive;

@@ -45,6 +45,8 @@ Esta beta funcional aporta la interfaz persistente, la base de prioridades y un 
 - Los IDs efectivos específicos de cada barra se resuelven para su propia barra, evitando que variantes dependientes del arma como Bloqueo elemental cambien de identidad seguida al cambiar de arma.
 - Condiciones de aparición: mientras esté equipada; mientras esté activa y equipada; y mientras esté inactiva y equipada. Las ultimates normales usan el estado lista para lanzar como estado activo.
 - Evidencias de estado por capas mediante temporizadores nativos del slot, toggles nativos, efectos del jugador con el mismo ID, recurso de ultimate y proveedores explícitos por habilidad. La ausencia de datos de API permanece como `UNKNOWN` y no cuenta como inactiva.
+- Las familias verificadas de IDs variables de estado se comparan mediante una identidad estable, para que los IDs nativos encadenados o atenuados no rompan el seguimiento slotado, activo o inactivo. Las nuevas familias solo se añaden tras confirmar sus IDs en ESO.
+- Blighted Blastbones tiene un proveedor explícito de temporizador nativo del slot, por lo que un temporizador cero legible puede establecer su estado inicial inactivo antes del primer lanzamiento; esta inicialización solo se aplica a habilidades con una señal negativa nativa verificada.
 - El estado toggle nativo positivo se acepta y aprende aunque ESO omita el metadato de toggle. Banner Bearer (`217699`) y la ultimate configurada del oso Warden (`92163`) también tienen proveedores toggle explícitos.
 - Aprendizaje persistente de capacidades: después de observar un temporizador real de slot o un efecto del jugador con el mismo ID, EZOCombat puede usar la ausencia posterior de ese proveedor como evidencia fiable de inactividad.
 - Actividad temporizada verificada para Asalto subterráneo y Fisura profunda del Warden, con sus ventanas activas de 6 y 9 segundos.
@@ -92,9 +94,14 @@ Comprueba en ESO:
 - que la ventana se abre desde LAM, `/ezocombat` y un atajo asignado;
 - que teclado, ratón, gamepad, chat/Enter, ESC y los menús normales conservan su comportamiento nativo;
 - que ambas barras muestran cinco ranuras normales y una ultimate;
+- que cambiar una habilidad slotada actualiza la ventana de barras inmediatamente y también después de cerrarla y abrirla de nuevo;
 - que un icono seguido desaparece al quitar la habilidad de ambas barras;
 - que Bloqueo elemental y otras habilidades sobrescritas por la barra conservan su identidad seguida y su icono elegible al cambiar a la otra barra;
+- que Blighted Blastbones, Blastbones y Stalking Blastbones mantienen su seguimiento cuando ESO cambia el ID nativo del slot entre los estados normal y atenuado, incluida la condición inactiva;
+- que Blighted Blastbones muestra su tracker inactivo desde la primera carga cuando el temporizador nativo del slot es legible, sin exigir un lanzamiento previo;
+- que Deep Fissure permanece activa durante su ventana prevista verificada de nueve segundos y pasa a inactiva al terminar, sin que la sustituya un temporizador nativo parcial del slot;
 - que Arctic Blast y otras habilidades con temporizador nativo están activas mientras su contador de slot sea positivo e inactivas al terminar; la capacidad observada debe conservarse tras `/reloadui`;
+- que los iconos HUD y la ventana de configuración de EZOCombat se ocultan mientras están abiertas las ruedas radiales o de utilidad interactivas de ESO y regresan al cerrarlas;
 - que las habilidades con toggle siguen `IsAbilityDurationToggled` junto con `IsSlotToggled`, mientras que activa y no activa de ultimates normales significan lista y no lista para lanzar;
 - que Banner Bearer solo está activo mientras su toggle nativo de slot está encendido y pasa a inactivo al desactivar el banner;
 - que las habilidades sin proveedor verificado permanecen como `UNKNOWN` en vez de aparecer como inactivas;
