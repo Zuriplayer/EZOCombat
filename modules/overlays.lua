@@ -37,6 +37,11 @@ local function GetAbilityDetails(abilityId)
 end
 
 local function ApplyPosition(control, tracker, index)
+    -- Refreshes can arrive while ESO is moving the control. Re-anchoring a
+    -- moving TopLevelWindow here makes the cursor-to-icon offset jump.
+    if control.ezoCombatMoving == true then
+        return
+    end
     control:ClearAnchors()
     if tracker.x and tracker.y then
         control:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, tracker.x, tracker.y)
@@ -123,17 +128,20 @@ local function CreateControl(tracker)
     control.trackerId = tracker.id
 
     local background = WM:CreateControl(nil, control, CT_BACKDROP)
+    background:SetMouseEnabled(false)
     background:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
     background:SetDimensions(ICON_SIZE, ICON_SIZE)
     background:SetEdgeTexture(nil, 1, 1, 1, 0)
     background:SetCenterColor(0.02, 0.02, 0.03, 0.86)
 
     local texture = WM:CreateControl(nil, control, CT_TEXTURE)
+    texture:SetMouseEnabled(false)
     texture:SetAnchor(TOPLEFT, background, TOPLEFT, 3, 3)
     texture:SetAnchor(BOTTOMRIGHT, background, BOTTOMRIGHT, -3, -3)
     control.texture = texture
 
     local priority = WM:CreateControl(nil, control, CT_LABEL)
+    priority:SetMouseEnabled(false)
     priority:SetAnchor(BOTTOMLEFT, background, BOTTOMLEFT, 4, -2)
     priority:SetFont("ZoFontGameSmall")
     priority:SetColor(1, 1, 1, 1)
@@ -175,15 +183,18 @@ local function CreateControl(tracker)
 
     control:SetHandler("OnMouseDown", function(_, button)
         if button == MOUSE_BUTTON_INDEX_LEFT then
+            control.ezoCombatMoving = true
             control:StartMoving()
         end
     end)
     control:SetHandler("OnMouseUp", function(_, button)
         if button == MOUSE_BUTTON_INDEX_LEFT then
             control:StopMovingOrResizing()
+            control.ezoCombatMoving = false
         end
     end)
     control:SetHandler("OnMoveStop", function()
+        control.ezoCombatMoving = false
         local current = ADDON.Priority and ADDON.Priority.GetTracker(tracker.abilityId)
         if current then
             ADDON.Priority.SetPosition(current, control:GetLeft(), control:GetTop())

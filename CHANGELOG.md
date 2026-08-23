@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.27-beta - 2026-08-18
+
+- Prevent HUD icon drag jumps by deferring overlay re-anchoring during movement and keeping child visuals from capturing the drag input.
+
 ## 0.2.26-beta - 2026-08-17
 
 - Seed Blighted Blastbones' initial inactive state from its verified readable zero slot timer, so the first cast is no longer required to learn the negative evidence.

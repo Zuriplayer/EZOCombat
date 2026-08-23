@@ -110,6 +110,7 @@ Verify in ESO:
 - `Two highest visible priorities` shows the first two P-levels that contain eligible abilities, plus every eligible Always visible icon;
 - the binding below an icon follows the current keyboard/gamepad mode and is hidden when its ability is not on the active bar;
 - dragging and disabling an icon persist through `/reloadui`;
+- an icon follows the cursor smoothly while being dragged, even when combat or HUD state refreshes occur during the drag;
 - `Show all configured` ignores activity and priority filtering only while selected, excludes disabled or unslotted trackers, and switches off when the action-bar window closes;
 - the window and HUD icons remain hidden outside HUD/HUD UI scenes.
 

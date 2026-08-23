@@ -110,6 +110,7 @@ Comprueba en ESO:
 - que `Mostrar las dos máximas prioridades visibles` muestra los dos primeros niveles P que contengan habilidades elegibles, además de todos los iconos elegibles Siempre visible;
 - que el binding bajo el icono sigue el modo actual de teclado/mando y se oculta cuando la habilidad no está en la barra activa;
 - que arrastrar y desactivar un icono persiste tras `/reloadui`;
+- que el icono sigue el cursor sin saltos mientras se arrastra, incluso si durante el arrastre se producen refrescos del estado de combate o del HUD;
 - que `Ver todos los configurados` ignora la condición de actividad y el filtro de prioridades solo mientras está marcado, excluye trackers deshabilitados o no equipados y se desactiva al cerrar la ventana de barras;
 - que la ventana y los iconos HUD permanecen ocultos fuera de las escenas HUD/HUD UI.
 
