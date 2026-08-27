@@ -8,7 +8,7 @@ Support, bug reports, and suggestions: https://discord.gg/ekw8zUAcRm
 
 ## Beta Status
 
-Version: `0.2.21-beta`
+Version: `0.2.30-beta`
 
 This functional beta provides the persistent UI, priority foundation, and a layered ability-state engine. Ability-specific effect mappings, remaining-time thresholds, and class rule packs still require separate in-client verification.
 
@@ -46,12 +46,17 @@ This functional beta provides the persistent UI, priority foundation, and a laye
 - Visibility conditions: while slotted; while active and slotted; and while inactive and slotted. Normal ultimates use ready-to-cast as their active state.
 - Layered state evidence from native slot timers, native toggles, same-ID effects on the player, ultimate resource readiness, and explicit per-ability providers. Missing API data remains `UNKNOWN` and does not count as inactive.
 - Verified state-variant ability-ID families are matched through a stable identity, so chained or greyed-out native IDs do not break slotted, active, or inactive tracking. New families are added only after their IDs are confirmed in ESO.
+- Crystal Fragments uses an explicit proc family: its slotted identity (`114716`), proc cast variant (`46324`), and player proc effect (`46327`) are matched without relying on localized names. The effect's presence is active evidence and its verified absence is inactive evidence.
 - Blighted Blastbones has an explicit native slot-timer provider, so a readable zero timer can establish its initial inactive state before the first cast; this bootstrap rule is reserved for abilities with a verified native negative signal.
 - Positive native toggle state is accepted and learned even when ESO omits toggle metadata. Banner Bearer (`217699`) and the configured Warden bear ultimate (`92163`) also have explicit toggle providers.
 - Persisted capability learning: after EZOCombat observes a real slot timer or same-ID player effect for an ability, it can use that provider's later absence as reliable inactive evidence.
 - Verified timed activity for Warden Subterranean Assault and Deep Fissure, including their 6-second and 9-second active windows.
 - Tracker categories `Always visible` and `P1` through `P5`. Always visible bypasses priority filtering but still respects the tracker's slotted, active, or inactive condition.
 - Global priority management in LAM: show all eligible levels, only the highest eligible level, or the two highest eligible levels. The two-level mode skips empty levels, so eligible P1 and P3 abilities are shown when P2 has none.
+- PvP enemy target frame limited to attackable player targets in AvA zones and active battlegrounds. It shows the target name, native current/max health and percentage, class and alliance icons, level or CP, and AvA rank when ESO provides those values.
+- Configurable low-health alert that shows a warning icon for five seconds when the enemy target crosses below the selected percentage. Repeated health events do not restart the timer.
+- Mouse-only PvP target-frame positioning preview with a persisted position. It is available only in PvP HUD scenes and never forces the frame visible during normal gameplay without an eligible target.
+- Optional PvP inverted damage cone using ESO's native scrolling combat text. Its tip starts above the target's head, opens upward, and exposes adjustable tip distance, width, row spacing, and repeated-hit spacing. The standard SCT position and cloud are restored outside PvP or when the feature is disabled.
 - English and Spanish runtime localization.
 - Opt-in diagnostics through LAM or `/ezocombatdebug`, using LibDebugLogger and optional chat mirroring.
 
@@ -63,6 +68,8 @@ The beta intentionally does not infer generic ability state from missing data. I
 - automatic mapping when a slotted ability and its applied player effect use different ability IDs;
 - verified class-specific semantics for every ability; toggled abilities use ESO's native toggle metadata and slot state, but still require in-client coverage;
 - rotation, cast, weapon-swap, block, dodge, interrupt, synergy, or ultimate automation.
+- a persistent focus target separate from ESO's current `reticleover` target; the PvP frame follows the currently selected attackable enemy player;
+- PvP target health when ESO does not expose a valid maximum value.
 
 Future state rules and alternate effect-ID mappings will be registered per ability ID only after their events and meaning are confirmed in ESO. An ability that exposes no verified provider remains `UNKNOWN`, so neither its active nor inactive condition is shown.
 
@@ -72,6 +79,8 @@ Future state rules and alternate effect-ID mappings will be registered per abili
 2. Right-click a slotted ability in either bar to keep its configuration open.
 3. Enable its HUD icon and choose its visibility condition and `Always visible` or `P1`-`P5` category from the window selectors. LAM provides the same category selector and the global priority-management mode.
 4. Drag a visible icon to its preferred HUD position. Use its `X` button or its LAM checkbox to disable it.
+5. In the PvP enemy target section, enable the frame and low-health alert, choose the threshold, and enable **Move PvP target frame** to drag its preview with the mouse while in an AvA zone or active battleground.
+6. To test the optional damage display, enable **Use inverted PvP damage cone** in the PvP floating-damage section and tune the tip distance, cone width, row spacing, and minimum text spacing. It affects ESO's native SCT damage slot only while in PvP.
 
 ## Safety Limits
 
@@ -98,6 +107,7 @@ Verify in ESO:
 - a tracked icon disappears when its ability is removed from both bars;
 - Blockade of Fire and other hotbar-overridden abilities retain their tracked identity and eligible icon after swapping away from their bar;
 - Blighted Blastbones, Blastbones, and Stalking Blastbones remain matched when ESO changes their native slot ID between normal and greyed-out states, including the inactive condition;
+- Crystal Fragments appears with the active condition as soon as its proc loads, remains matched across a weapon swap, and returns to inactive immediately after consuming or losing the proc;
 - Blighted Blastbones shows its inactive tracker on the first load when its native slot timer is readable, without requiring a prior cast;
 - Deep Fissure remains active for its verified nine-second predicted window and becomes inactive when that window expires, without being overridden by a partial native slot timer;
 - Arctic Blast and other native timed skills become active while their slot counter is positive and inactive after expiry; the observed timer capability remains available after `/reloadui`;
@@ -112,11 +122,19 @@ Verify in ESO:
 - dragging and disabling an icon persist through `/reloadui`;
 - an icon follows the cursor smoothly while being dragged, even when combat or HUD state refreshes occur during the drag;
 - `Show all configured` ignores activity and priority filtering only while selected, excludes disabled or unslotted trackers, and switches off when the action-bar window closes;
+- the PvP target frame remains hidden in PvE, against NPCs, against allied players, and when no attackable player target exists;
+- the PvP target frame updates when changing targets and when the target's native health changes;
+- class and alliance icons, level/CP, rank, and health values are shown only when ESO provides valid data;
+- the low-health warning appears once when the target crosses below the configured threshold, remains visible for five seconds, does not extend on repeated damage, and can trigger again after recovery;
+- enabling the PvP target-frame move mode shows a temporary preview only in PvP HUD scenes, mouse dragging persists its position, and disabling the mode removes the preview;
+- the PvP target frame and warning hide while ESO's interactive radial or utility wheels are open and return when the wheel closes;
+- the optional PvP damage cone changes the native SCT position only in AvA or active battleground scenes, places the cone tip nearest the target head, and restores the previous SCT position and cloud when disabled or leaving PvP;
+- the optional PvP damage cone applies independently to keyboard and gamepad SCT clouds and does not create combat input or duplicate combat events;
 - the window and HUD icons remain hidden outside HUD/HUD UI scenes.
 
 Report issues with client API version, addon version, language, input mode, and the Lua error text.
 
-For state or selector issues, enable **Debug** in LAM, reproduce the issue with the ability, then use **Capture configuration diagnostic** or `/ezocombatdebug`. The snapshot includes phase, source, confidence, slot timer, duration, stacks, toggle, cooldown, ultimate resource, and current player-effect IDs. Include the EZOCombat entries from LibDebugLogger in the report; when that optional library is unavailable, EZOCombat writes the diagnostic to chat instead.
+For state or selector issues, enable **Debug** in LAM, reproduce the issue with the ability, then use **Capture configuration diagnostic** or `/ezocombatdebug`. The snapshot includes the stable ability ID, matched effect ID, phase, source, confidence, slot timer, duration, stacks, toggle, cooldown, ultimate resource, and current player-effect IDs. Include the EZOCombat entries from LibDebugLogger in the report; when that optional library is unavailable, EZOCombat writes the diagnostic to chat instead.
 
 ## License
 

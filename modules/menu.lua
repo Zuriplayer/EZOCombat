@@ -118,6 +118,143 @@ local function BuildOptions()
             default = ADDON.Priority.MODE_ALL,
             width = "full",
         },
+        CreateInfoHeader(GetString(SI_EZOCOMBAT_OPTIONS_PVP_TARGET), GetString(SI_EZOCOMBAT_OPTIONS_PVP_TARGET_TOOLTIP)),
+        {
+            type = "checkbox",
+            name = GetString(SI_EZOCOMBAT_ENABLE_PVP_TARGET),
+            tooltip = GetString(SI_EZOCOMBAT_ENABLE_PVP_TARGET_TOOLTIP),
+            getFunc = ADDON.PvpTarget.IsEnabled,
+            setFunc = function(value)
+                ADDON.PvpTarget.SetEnabled(value == true)
+                Settings.RequestSettingsRefresh(true)
+            end,
+            default = true,
+        },
+        {
+            type = "checkbox",
+            name = GetString(SI_EZOCOMBAT_ENABLE_PVP_LOW_HEALTH_ALERT),
+            tooltip = GetString(SI_EZOCOMBAT_ENABLE_PVP_LOW_HEALTH_ALERT_TOOLTIP),
+            getFunc = ADDON.PvpTarget.IsLowHealthAlertEnabled,
+            setFunc = function(value)
+                ADDON.PvpTarget.SetLowHealthAlertEnabled(value == true)
+                Settings.RequestSettingsRefresh(true)
+            end,
+            disabled = function()
+                return not ADDON.PvpTarget.IsEnabled()
+            end,
+            default = true,
+        },
+        {
+            type = "slider",
+            name = GetString(SI_EZOCOMBAT_PVP_HEALTH_THRESHOLD),
+            tooltip = GetString(SI_EZOCOMBAT_PVP_HEALTH_THRESHOLD_TOOLTIP),
+            min = 5,
+            max = 95,
+            step = 5,
+            decimals = 0,
+            getFunc = ADDON.PvpTarget.GetHealthThreshold,
+            setFunc = function(value)
+                ADDON.PvpTarget.SetHealthThreshold(value)
+            end,
+            disabled = function()
+                return not ADDON.PvpTarget.IsEnabled() or not ADDON.PvpTarget.IsLowHealthAlertEnabled()
+            end,
+            default = 30,
+        },
+        {
+            type = "checkbox",
+            name = GetString(SI_EZOCOMBAT_PVP_MOVE_FRAME),
+            tooltip = GetString(SI_EZOCOMBAT_PVP_MOVE_FRAME_TOOLTIP),
+            getFunc = ADDON.PvpTarget.IsMoveMode,
+            setFunc = function(value)
+                ADDON.PvpTarget.SetMoveMode(value == true)
+                Settings.RequestSettingsRefresh(false)
+            end,
+            disabled = function()
+                return not ADDON.PvpTarget.IsEnabled()
+            end,
+            default = false,
+        },
+        CreateInfoHeader(GetString(SI_EZOCOMBAT_OPTIONS_PVP_SCT), GetString(SI_EZOCOMBAT_OPTIONS_PVP_SCT_TOOLTIP)),
+        {
+            type = "checkbox",
+            name = GetString(SI_EZOCOMBAT_ENABLE_PVP_SCT),
+            tooltip = GetString(SI_EZOCOMBAT_ENABLE_PVP_SCT_TOOLTIP),
+            getFunc = ADDON.PvpSct.IsEnabled,
+            setFunc = function(value)
+                ADDON.PvpSct.SetEnabled(value == true)
+                Settings.RequestSettingsRefresh(true)
+            end,
+            default = false,
+        },
+        {
+            type = "slider",
+            name = GetString(SI_EZOCOMBAT_PVP_SCT_TIP_DISTANCE),
+            tooltip = GetString(SI_EZOCOMBAT_PVP_SCT_TIP_DISTANCE_TOOLTIP),
+            min = 0,
+            max = 120,
+            step = 5,
+            decimals = 0,
+            getFunc = ADDON.PvpSct.GetTipDistance,
+            setFunc = function(value)
+                ADDON.PvpSct.SetTipDistance(value)
+            end,
+            disabled = function()
+                return not ADDON.PvpSct.IsEnabled()
+            end,
+            default = 20,
+        },
+        {
+            type = "slider",
+            name = GetString(SI_EZOCOMBAT_PVP_SCT_CONE_WIDTH),
+            tooltip = GetString(SI_EZOCOMBAT_PVP_SCT_CONE_WIDTH_TOOLTIP),
+            min = 0,
+            max = 240,
+            step = 10,
+            decimals = 0,
+            getFunc = ADDON.PvpSct.GetConeWidth,
+            setFunc = function(value)
+                ADDON.PvpSct.SetConeWidth(value)
+            end,
+            disabled = function()
+                return not ADDON.PvpSct.IsEnabled()
+            end,
+            default = 70,
+        },
+        {
+            type = "slider",
+            name = GetString(SI_EZOCOMBAT_PVP_SCT_ROW_SPACING),
+            tooltip = GetString(SI_EZOCOMBAT_PVP_SCT_ROW_SPACING_TOOLTIP),
+            min = 8,
+            max = 50,
+            step = 2,
+            decimals = 0,
+            getFunc = ADDON.PvpSct.GetRowSpacing,
+            setFunc = function(value)
+                ADDON.PvpSct.SetRowSpacing(value)
+            end,
+            disabled = function()
+                return not ADDON.PvpSct.IsEnabled()
+            end,
+            default = 18,
+        },
+        {
+            type = "slider",
+            name = GetString(SI_EZOCOMBAT_PVP_SCT_MINIMUM_SPACING),
+            tooltip = GetString(SI_EZOCOMBAT_PVP_SCT_MINIMUM_SPACING_TOOLTIP),
+            min = 0,
+            max = 500,
+            step = 10,
+            decimals = 0,
+            getFunc = ADDON.PvpSct.GetMinimumSpacing,
+            setFunc = function(value)
+                ADDON.PvpSct.SetMinimumSpacing(value)
+            end,
+            disabled = function()
+                return not ADDON.PvpSct.IsEnabled()
+            end,
+            default = 90,
+        },
         CreateInfoHeader(GetString(SI_EZOCOMBAT_OPTIONS_DEBUG), GetString(SI_EZOCOMBAT_OPTIONS_DEBUG_TOOLTIP)),
         {
             type = "checkbox",

@@ -111,6 +111,12 @@ function ADDON.RunDebugSnapshot()
     if ADDON.Priority and type(ADDON.Priority.DebugSnapshot) == "function" then
         ADDON.Priority.DebugSnapshot()
     end
+    if ADDON.PvpTarget and type(ADDON.PvpTarget.DebugSnapshot) == "function" then
+        ADDON.PvpTarget.DebugSnapshot()
+    end
+    if ADDON.PvpSct and type(ADDON.PvpSct.DebugSnapshot) == "function" then
+        ADDON.PvpSct.DebugSnapshot()
+    end
     if ADDON.Window and type(ADDON.Window.DebugSnapshot) == "function" then
         ADDON.Window.DebugSnapshot()
     end
@@ -195,6 +201,9 @@ function ADDON.RegisterWithEZOCore()
             capabilities = {
                 "combat.research",
                 "combat.visual-assistance",
+                "pvp.enemy-target-frame",
+                "pvp.low-health-alert",
+                "pvp.sct-cone",
                 "family.debug.controller",
                 "family.language.consumer",
                 "family.settings.consumer",
@@ -261,6 +270,12 @@ function ADDON:Initialize()
     end
     if self.Overlays and type(self.Overlays.Init) == "function" then
         self.Overlays.Init()
+    end
+    if self.PvpTarget and type(self.PvpTarget.Init) == "function" then
+        self.PvpTarget.Init()
+    end
+    if self.PvpSct and type(self.PvpSct.Init) == "function" then
+        self.PvpSct.Init()
     end
     if self.Window and type(self.Window.Init) == "function" then
         self.Window.Init()

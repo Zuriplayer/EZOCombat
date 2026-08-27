@@ -131,6 +131,9 @@ function Context.RefreshHudVisibility()
     if ADDON.Window and type(ADDON.Window.RefreshVisibility) == "function" then
         ADDON.Window.RefreshVisibility()
     end
+    if ADDON.PvpTarget and type(ADDON.PvpTarget.Refresh) == "function" then
+        ADDON.PvpTarget.Refresh()
+    end
 end
 
 function Context.GetActiveProfile()

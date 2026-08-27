@@ -4,7 +4,7 @@ EZOCombat.SavedVars = EZOCombat.SavedVars or {}
 local ADDON = EZOCombat
 local SavedVars = ADDON.SavedVars
 local SAVED_VARIABLES_NAME = "EZOCombat_Saved"
-local SCHEMA_VERSION = 1
+local SCHEMA_VERSION = 3
 
 local function GetWorld()
     if type(GetWorldName) ~= "function" then
@@ -25,6 +25,18 @@ local defaults = {
     },
     window = {
         enabled = true,
+    },
+    pvpTarget = {
+        enabled = true,
+        lowHealthAlert = true,
+        healthThreshold = 30,
+    },
+    pvpSct = {
+        enabled = false,
+        tipDistance = 20,
+        coneWidth = 70,
+        rowSpacing = 18,
+        minimumSpacing = 90,
     },
     abilityState = {
         capabilities = {},
@@ -52,6 +64,21 @@ function SavedVars.Init()
     end
     sv.window = sv.window or {}
     sv.window.enabled = sv.window.enabled ~= false
+    sv.pvpTarget = sv.pvpTarget or {}
+    sv.pvpTarget.enabled = sv.pvpTarget.enabled ~= false
+    sv.pvpTarget.lowHealthAlert = sv.pvpTarget.lowHealthAlert ~= false
+    local healthThreshold = tonumber(sv.pvpTarget.healthThreshold) or 30
+    sv.pvpTarget.healthThreshold = math.max(5, math.min(95, math.floor(healthThreshold + 0.5)))
+    sv.pvpSct = sv.pvpSct or {}
+    sv.pvpSct.enabled = sv.pvpSct.enabled == true
+    local tipDistance = tonumber(sv.pvpSct.tipDistance) or 20
+    sv.pvpSct.tipDistance = math.max(0, math.min(120, math.floor(tipDistance + 0.5)))
+    local coneWidth = tonumber(sv.pvpSct.coneWidth) or 70
+    sv.pvpSct.coneWidth = math.max(0, math.min(240, math.floor(coneWidth + 0.5)))
+    local rowSpacing = tonumber(sv.pvpSct.rowSpacing) or 18
+    sv.pvpSct.rowSpacing = math.max(8, math.min(50, math.floor(rowSpacing + 0.5)))
+    local minimumSpacing = tonumber(sv.pvpSct.minimumSpacing) or 90
+    sv.pvpSct.minimumSpacing = math.max(0, math.min(500, math.floor(minimumSpacing + 0.5)))
     sv.abilityState = sv.abilityState or {}
     sv.abilityState.capabilities = sv.abilityState.capabilities or {}
     sv.profiles = sv.profiles or {}

@@ -8,7 +8,7 @@ Soporte, errores y sugerencias: https://discord.gg/ekw8zUAcRm
 
 ## Estado Beta
 
-Versión: `0.2.21-beta`
+Versión: `0.2.30-beta`
 
 Esta beta funcional aporta la interfaz persistente, la base de prioridades y un motor de estado por evidencias. Los mapas específicos de efectos, umbrales de tiempo restante y catálogos por clase todavía requieren validación independiente en el cliente.
 
@@ -46,12 +46,17 @@ Esta beta funcional aporta la interfaz persistente, la base de prioridades y un 
 - Condiciones de aparición: mientras esté equipada; mientras esté activa y equipada; y mientras esté inactiva y equipada. Las ultimates normales usan el estado lista para lanzar como estado activo.
 - Evidencias de estado por capas mediante temporizadores nativos del slot, toggles nativos, efectos del jugador con el mismo ID, recurso de ultimate y proveedores explícitos por habilidad. La ausencia de datos de API permanece como `UNKNOWN` y no cuenta como inactiva.
 - Las familias verificadas de IDs variables de estado se comparan mediante una identidad estable, para que los IDs nativos encadenados o atenuados no rompan el seguimiento slotado, activo o inactivo. Las nuevas familias solo se añaden tras confirmar sus IDs en ESO.
+- Crystal Fragments usa una familia de proc explícita: su identidad equipada (`114716`), la variante de lanzamiento del proc (`46324`) y el efecto de proc del jugador (`46327`) se relacionan sin depender de nombres localizados. La presencia del efecto es evidencia activa y su ausencia verificada es evidencia inactiva.
 - Blighted Blastbones tiene un proveedor explícito de temporizador nativo del slot, por lo que un temporizador cero legible puede establecer su estado inicial inactivo antes del primer lanzamiento; esta inicialización solo se aplica a habilidades con una señal negativa nativa verificada.
 - El estado toggle nativo positivo se acepta y aprende aunque ESO omita el metadato de toggle. Banner Bearer (`217699`) y la ultimate configurada del oso Warden (`92163`) también tienen proveedores toggle explícitos.
 - Aprendizaje persistente de capacidades: después de observar un temporizador real de slot o un efecto del jugador con el mismo ID, EZOCombat puede usar la ausencia posterior de ese proveedor como evidencia fiable de inactividad.
 - Actividad temporizada verificada para Asalto subterráneo y Fisura profunda del Warden, con sus ventanas activas de 6 y 9 segundos.
 - Categorías `Siempre visible` y `P1` a `P5`. Siempre visible evita el filtrado por prioridad, pero sigue respetando la condición equipada, activa o inactiva de la habilidad.
 - Gestión global de prioridades en LAM: mostrar todos los niveles elegibles, solo el nivel elegible más alto o los dos niveles elegibles más altos. El modo de dos niveles omite niveles vacíos; por ejemplo, muestra P1 y P3 cuando P2 no contiene habilidades elegibles.
+- Marco de objetivo enemigo PvP limitado a jugadores enemigos atacables en zonas AvA y campos de batalla activos. Muestra el nombre, la salud nativa actual/máxima y su porcentaje, los iconos de clase y alianza, el nivel o CP y el rango AvA cuando ESO proporciona esos datos.
+- Alerta configurable de salud baja que muestra un icono de aviso durante cinco segundos cuando el objetivo enemigo cruza por debajo del porcentaje elegido. Los eventos de daño repetidos no reinician el temporizador.
+- Previsualización de posición del marco de objetivo PvP movible solo con ratón, con posición persistente. Solo está disponible en escenas HUD PvP y nunca fuerza la visibilidad del marco durante el juego normal si no hay un objetivo elegible.
+- Cono de daño PvP invertido opcional usando el texto de combate nativo de ESO. Su vértice comienza sobre la cabeza del objetivo, se abre hacia arriba y permite ajustar la distancia del vértice, la anchura, la separación de filas y la separación de impactos repetidos. La posición y la nube SCT estándar se restauran fuera de PvP o al desactivar la función.
 - Localización runtime en inglés y español.
 - Diagnóstico opcional desde LAM o `/ezocombatdebug`, usando LibDebugLogger y duplicado opcional al chat.
 
@@ -63,6 +68,8 @@ La beta no deduce estados genéricos de habilidad a partir de datos ausentes. To
 - mapeo automático cuando la habilidad equipada y el efecto aplicado al jugador usan IDs de habilidad diferentes;
 - semántica específica verificada para todas las habilidades de cada clase; las habilidades con toggle usan los metadatos y el estado nativo del slot, pero todavía requieren cobertura dentro del cliente;
 - automatización de rotación, lanzamiento, cambio de barra, bloqueo, esquiva, interrupción, sinergia o ultimate.
+- un foco persistente separado del objetivo actual `reticleover` de ESO; el marco PvP sigue al jugador enemigo atacable seleccionado actualmente;
+- la salud del objetivo PvP cuando ESO no expone un valor máximo válido.
 
 Las reglas futuras y los mapas alternativos de IDs de efecto se registrarán por `abilityId` solo cuando sus eventos y significado estén confirmados en ESO. Una habilidad sin proveedor verificado permanece como `UNKNOWN`, por lo que no se muestra ni con la condición activa ni con la condición inactiva.
 
@@ -72,6 +79,8 @@ Las reglas futuras y los mapas alternativos de IDs de efecto se registrarán por
 2. Haz clic derecho sobre una habilidad equipada de cualquiera de las dos barras para mantener abierta su configuración.
 3. Activa su icono HUD y elige la condición de aparición y la categoría `Siempre visible` o `P1`-`P5` con los selectores de la ventana. LAM ofrece el mismo selector y el modo global de gestión de prioridades.
 4. Arrastra un icono visible a la posición HUD deseada. Usa su botón `X` o la casilla LAM para desactivarlo.
+5. En la sección de objetivo enemigo PvP, activa el marco y la alerta de salud baja, elige el umbral y activa **Mover marco de objetivo PvP** para arrastrar su previsualización con el ratón mientras estés en una zona AvA o un campo de batalla activo.
+6. Para probar el daño flotante opcional, activa **Usar cono de daño PvP invertido** en la sección de daño flotante PvP y ajusta la distancia del vértice, la anchura, la separación de filas y la separación mínima del texto. Solo afecta al slot SCT nativo mientras estás en PvP.
 
 ## Límites De Seguridad
 
@@ -98,6 +107,7 @@ Comprueba en ESO:
 - que un icono seguido desaparece al quitar la habilidad de ambas barras;
 - que Bloqueo elemental y otras habilidades sobrescritas por la barra conservan su identidad seguida y su icono elegible al cambiar a la otra barra;
 - que Blighted Blastbones, Blastbones y Stalking Blastbones mantienen su seguimiento cuando ESO cambia el ID nativo del slot entre los estados normal y atenuado, incluida la condición inactiva;
+- que Crystal Fragments aparece con la condición activa en cuanto se carga el proc, mantiene la asociación al cambiar de barra y vuelve a inactiva inmediatamente al consumir o perder el proc;
 - que Blighted Blastbones muestra su tracker inactivo desde la primera carga cuando el temporizador nativo del slot es legible, sin exigir un lanzamiento previo;
 - que Deep Fissure permanece activa durante su ventana prevista verificada de nueve segundos y pasa a inactiva al terminar, sin que la sustituya un temporizador nativo parcial del slot;
 - que Arctic Blast y otras habilidades con temporizador nativo están activas mientras su contador de slot sea positivo e inactivas al terminar; la capacidad observada debe conservarse tras `/reloadui`;
@@ -112,11 +122,19 @@ Comprueba en ESO:
 - que arrastrar y desactivar un icono persiste tras `/reloadui`;
 - que el icono sigue el cursor sin saltos mientras se arrastra, incluso si durante el arrastre se producen refrescos del estado de combate o del HUD;
 - que `Ver todos los configurados` ignora la condición de actividad y el filtro de prioridades solo mientras está marcado, excluye trackers deshabilitados o no equipados y se desactiva al cerrar la ventana de barras;
+- que el marco de objetivo PvP permanece oculto en PvE, contra NPCs, contra jugadores aliados y cuando no existe un jugador enemigo atacable;
+- que el marco de objetivo PvP se actualiza al cambiar de objetivo y cuando cambia la salud nativa del objetivo;
+- que los iconos de clase y alianza, el nivel/CP, el rango y los valores de salud solo aparecen cuando ESO proporciona datos válidos;
+- que la alerta de salud baja aparece una vez cuando el objetivo cruza el umbral configurado, dura cinco segundos, no se prolonga con daño repetido y puede activarse de nuevo después de recuperarse;
+- que activar el modo de mover el marco PvP muestra una previsualización temporal solo en escenas HUD PvP, el arrastre con ratón conserva la posición y desactivar el modo elimina la previsualización;
+- que el marco PvP y el aviso se ocultan mientras están abiertas las ruedas radiales o de utilidad interactivas de ESO y regresan al cerrarlas;
+- que el cono de daño PvP opcional cambia la posición SCT nativa solo en zonas AvA o campos de batalla activos, coloca el vértice más cerca de la cabeza del objetivo y restaura la posición y la nube SCT anteriores al desactivarlo o salir de PvP;
+- que el cono de daño PvP opcional se aplica de forma independiente a las nubes SCT de teclado y mando, y no crea input de combate ni duplica eventos de combate;
 - que la ventana y los iconos HUD permanecen ocultos fuera de las escenas HUD/HUD UI.
 
 Informa de los problemas indicando versión de API del cliente, versión del addon, idioma, modo de input y texto del error Lua.
 
-Para problemas de estado o de los selectores, activa **Depuración** en LAM, reproduce el problema con la habilidad y usa **Capturar diagnóstico de configuración** o `/ezocombatdebug`. La captura incluye fase, fuente, confianza, temporizador y duración del slot, acumulaciones, toggle, cooldown, recurso de ultimate e IDs actuales de efectos del jugador. Incluye las entradas de EZOCombat de LibDebugLogger en el informe; si esa librería opcional no está disponible, EZOCombat escribe el diagnóstico en el chat.
+Para problemas de estado o de los selectores, activa **Depuración** en LAM, reproduce el problema con la habilidad y usa **Capturar diagnóstico de configuración** o `/ezocombatdebug`. La captura incluye el ID estable de habilidad, el ID de efecto asociado, fase, fuente, confianza, temporizador y duración del slot, acumulaciones, toggle, cooldown, recurso de ultimate e IDs actuales de efectos del jugador. Incluye las entradas de EZOCombat de LibDebugLogger en el informe; si esa librería opcional no está disponible, EZOCombat escribe el diagnóstico en el chat.
 
 ## Licencia
 

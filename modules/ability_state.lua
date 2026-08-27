@@ -24,6 +24,7 @@ AbilityState.effectsReadable = AbilityState.effectsReadable == true
 local PROVIDERS = {
     [86156] = { source = AbilityState.SOURCE_SLOT_TIMER }, -- Arctic Blast
     [117690] = { source = AbilityState.SOURCE_SLOT_TIMER }, -- Blighted Blastbones; zero is valid inactive evidence from first load
+    [114716] = { source = AbilityState.SOURCE_UNIT_EFFECT, effectIds = { 46327 } }, -- Crystal Fragments proc
     [92163] = { source = AbilityState.SOURCE_TOGGLE }, -- Warden bear ultimate
     [217699] = { source = AbilityState.SOURCE_TOGGLE }, -- Banner Bearer
     [86019] = { source = AbilityState.SOURCE_PREDICTED, durationMs = 6000 },
@@ -36,6 +37,7 @@ local PROVIDERS = {
 -- unverified grouping could merge two different skills. The first ID is the
 -- stable tracker identity; the other IDs are native state/effect variants.
 local ABILITY_FAMILIES = {
+    { 114716, 46324 }, -- Crystal Fragments slotted identity / proc cast variant
     { 114860, 117330, 114861 }, -- Blastbones
     { 117690, 117693, 117691 }, -- Blighted Blastbones
     { 117749, 117773, 117750 }, -- Stalking Blastbones
@@ -496,6 +498,7 @@ end
 
 function AbilityState.Describe(state)
     local parts = {
+        "ability=" .. tostring(state.abilityId),
         "phase=" .. tostring(state.phase),
         "active=" .. tostring(state.active),
         "source=" .. tostring(state.source),
@@ -509,6 +512,9 @@ function AbilityState.Describe(state)
         parts[#parts + 1] = "ready=" .. tostring(state.ready)
         parts[#parts + 1] = "resource=" .. tostring(state.currentResource)
         parts[#parts + 1] = "cost=" .. tostring(state.requiredResource)
+    end
+    if state.effectAbilityId ~= nil then
+        parts[#parts + 1] = "effectAbility=" .. tostring(state.effectAbilityId)
     end
     for _, sample in ipairs(state.samples or {}) do
         parts[#parts + 1] = string.format(

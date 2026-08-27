@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.30-beta - 2026-08-27
+
+- Match Crystal Fragments' slotted ID, proc cast variant, and player proc effect through one stable tracker identity, allowing active and inactive conditions to follow the loaded proc.
+- Extend state diagnostics with the normalized ability ID and the matched player-effect ID for future abilities that expose separate slotted, state-variant, and effect IDs.
+
+## 0.2.29-beta - 2026-08-26
+
+- Added an opt-in PvP inverted damage-cone profile for ESO's native scrolling combat text, with adjustable tip distance, cone width, row spacing, and repeated-hit spacing.
+- The profile temporarily adjusts the standard damage SCT slot for other players and restores its previous position and cloud outside PvP or when disabled; it does not simulate combat input or create combat events.
+
+## 0.2.28-beta - 2026-08-26
+
+- Added an informational PvP enemy target frame for attackable player targets in AvA zones and active battlegrounds, with native health, class, alliance, level/CP, and AvA rank data when available.
+- Added a configurable five-second low-health warning with edge-triggered threshold handling, plus a mouse-only positioning preview.
+- Registered the PvP target-frame and low-health-alert capabilities with optional EZOCore integration.
+
 ## 0.2.27-beta - 2026-08-18
 
 - Prevent HUD icon drag jumps by deferring overlay re-anchoring during movement and keeping child visuals from capturing the drag input.
