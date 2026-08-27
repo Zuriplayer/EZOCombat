@@ -397,7 +397,6 @@ local function CreateControl()
     PvpTarget.healthFill:SetAnchor(TOPLEFT, healthBackground, TOPLEFT, 1, 1)
     PvpTarget.healthFill:SetDimensions(CONTENT_WIDTH - 2, HEALTH_BAR_HEIGHT - 2)
     PvpTarget.healthFill:SetCenterColor(0.70, 0.06, 0.06, 1)
-    PvpTarget.healthFill:SetEdgeTexture(nil, 0, 0, 0, 0)
     PvpTarget.healthFill:SetMouseEnabled(false)
 
     PvpTarget.health = WM:CreateControl(nil, PvpTarget.frame, CT_LABEL)

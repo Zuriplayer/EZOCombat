@@ -5,6 +5,9 @@ local ADDON = EZOCombat
 local SavedVars = ADDON.SavedVars
 local SAVED_VARIABLES_NAME = "EZOCombat_Saved"
 local SCHEMA_VERSION = 3
+local DEFAULT_ICON_SIZE = 54
+local MIN_ICON_SIZE = 32
+local MAX_ICON_SIZE = 128
 
 local function GetWorld()
     if type(GetWorldName) ~= "function" then
@@ -22,6 +25,7 @@ local defaults = {
         debugMode = false,
         debugChat = false,
         priorityMode = "all",
+        iconSize = DEFAULT_ICON_SIZE,
     },
     window = {
         enabled = true,
@@ -62,6 +66,8 @@ function SavedVars.Init()
     if sv.general.priorityMode ~= "highest" and sv.general.priorityMode ~= "top_two" then
         sv.general.priorityMode = "all"
     end
+    local iconSize = tonumber(sv.general.iconSize) or DEFAULT_ICON_SIZE
+    sv.general.iconSize = math.max(MIN_ICON_SIZE, math.min(MAX_ICON_SIZE, math.floor(iconSize + 0.5)))
     sv.window = sv.window or {}
     sv.window.enabled = sv.window.enabled ~= false
     sv.pvpTarget = sv.pvpTarget or {}

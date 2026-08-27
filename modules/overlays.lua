@@ -4,10 +4,12 @@ EZOCombat.Overlays = EZOCombat.Overlays or {}
 local ADDON = EZOCombat
 local Overlays = ADDON.Overlays
 local WM = WINDOW_MANAGER
-local ICON_SIZE = 54
 local KEYBIND_HEIGHT = 20
-local CONTROL_HEIGHT = ICON_SIZE + KEYBIND_HEIGHT
 local CLOSE_SIZE = 16
+
+Overlays.DEFAULT_ICON_SIZE = 54
+Overlays.MIN_ICON_SIZE = 32
+Overlays.MAX_ICON_SIZE = 128
 
 local function IsHudScene()
     return SCENE_MANAGER
@@ -16,6 +18,26 @@ local function IsHudScene()
         and not (ADDON.Context
             and type(ADDON.Context.IsHudOverlayBlocked) == "function"
             and ADDON.Context.IsHudOverlayBlocked())
+end
+
+local function NormalizeIconSize(value)
+    value = tonumber(value) or Overlays.DEFAULT_ICON_SIZE
+    value = math.floor(value + 0.5)
+    return math.max(Overlays.MIN_ICON_SIZE, math.min(Overlays.MAX_ICON_SIZE, value))
+end
+
+function Overlays.GetIconSize()
+    local general = ADDON.sv and ADDON.sv.general
+    return NormalizeIconSize(general and general.iconSize)
+end
+
+function Overlays.SetIconSize(value)
+    if not (ADDON.sv and ADDON.sv.general) then
+        return false
+    end
+    ADDON.sv.general.iconSize = NormalizeIconSize(value)
+    Overlays.Refresh()
+    return true
 end
 
 local function GetAbilityDetails(abilityId)
@@ -48,9 +70,10 @@ local function ApplyPosition(control, tracker, index)
         return
     end
 
+    local iconSize = Overlays.GetIconSize()
     local column = (index - 1) % 4
     local row = math.floor((index - 1) / 4)
-    control:SetAnchor(CENTER, GuiRoot, CENTER, 140 + column * 88, -90 + row * 84)
+    control:SetAnchor(CENTER, GuiRoot, CENTER, 140 + column * (iconSize + 34), -90 + row * (iconSize + 30))
 end
 
 local function HideTooltip(control)
@@ -118,9 +141,17 @@ local function UpdateBinding(control, tracker)
     )
 end
 
+local function ApplySize(control)
+    local iconSize = Overlays.GetIconSize()
+    control:SetDimensions(iconSize, iconSize + KEYBIND_HEIGHT)
+    control.background:SetDimensions(iconSize, iconSize)
+    control.binding:SetDimensions(math.max(80, iconSize), KEYBIND_HEIGHT)
+end
+
 local function CreateControl(tracker)
+    local iconSize = Overlays.GetIconSize()
     local control = WM:CreateControl("EZOCombatOverlay" .. tracker.id, Overlays.root, CT_CONTROL)
-    control:SetDimensions(ICON_SIZE, CONTROL_HEIGHT)
+    control:SetDimensions(iconSize, iconSize + KEYBIND_HEIGHT)
     control:SetMovable(true)
     control:SetMouseEnabled(true)
     control:SetClampedToScreen(true)
@@ -130,9 +161,10 @@ local function CreateControl(tracker)
     local background = WM:CreateControl(nil, control, CT_BACKDROP)
     background:SetMouseEnabled(false)
     background:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
-    background:SetDimensions(ICON_SIZE, ICON_SIZE)
+    background:SetDimensions(iconSize, iconSize)
     background:SetEdgeTexture(nil, 1, 1, 1, 0)
     background:SetCenterColor(0.02, 0.02, 0.03, 0.86)
+    control.background = background
 
     local texture = WM:CreateControl(nil, control, CT_TEXTURE)
     texture:SetMouseEnabled(false)
@@ -149,7 +181,7 @@ local function CreateControl(tracker)
 
     local binding = WM:CreateControl(nil, control, CT_LABEL)
     binding:SetAnchor(TOP, background, BOTTOM, 0, 1)
-    binding:SetDimensions(80, KEYBIND_HEIGHT)
+    binding:SetDimensions(math.max(80, iconSize), KEYBIND_HEIGHT)
     binding:SetFont("ZoFontGameSmall")
     binding:SetColor(1, 1, 1, 1)
     binding:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
@@ -272,6 +304,7 @@ function Overlays.Refresh()
             tracker.priority == ADDON.Priority.ALWAYS and "" or "P" .. tostring(tracker.priority)
         )
         UpdateBinding(control, tracker)
+        ApplySize(control)
         ApplyPosition(control, tracker, index)
         control:SetHidden(false)
     end

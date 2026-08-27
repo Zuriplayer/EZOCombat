@@ -21,14 +21,52 @@ AbilityState.activeEffects = AbilityState.activeEffects or {}
 AbilityState.predictions = AbilityState.predictions or {}
 AbilityState.effectsReadable = AbilityState.effectsReadable == true
 
+-- Provider strategies are deliberately opt-in. A readable zero from ESO is
+-- only negative evidence for abilities registered as native slot timers; a
+-- missing generic signal must remain UNKNOWN for every other ability.
+local function NativeSlotTimerProvider()
+    return {
+        strategy = "native_slot_timer",
+        source = AbilityState.SOURCE_SLOT_TIMER,
+    }
+end
+
+local function PlayerEffectProvider(effectIds)
+    return {
+        strategy = "player_effect",
+        source = AbilityState.SOURCE_UNIT_EFFECT,
+        effectIds = effectIds,
+    }
+end
+
+local function ToggleProvider()
+    return {
+        strategy = "native_toggle",
+        source = AbilityState.SOURCE_TOGGLE,
+    }
+end
+
+local function CastCycleProvider(durationMs, initialInactive)
+    return {
+        strategy = "cast_cycle",
+        source = AbilityState.SOURCE_PREDICTED,
+        durationMs = durationMs,
+        initialInactive = initialInactive == true,
+    }
+end
+
 local PROVIDERS = {
-    [86156] = { source = AbilityState.SOURCE_SLOT_TIMER }, -- Arctic Blast
-    [117690] = { source = AbilityState.SOURCE_SLOT_TIMER }, -- Blighted Blastbones; zero is valid inactive evidence from first load
-    [114716] = { source = AbilityState.SOURCE_UNIT_EFFECT, effectIds = { 46327 } }, -- Crystal Fragments proc
-    [92163] = { source = AbilityState.SOURCE_TOGGLE }, -- Warden bear ultimate
-    [217699] = { source = AbilityState.SOURCE_TOGGLE }, -- Banner Bearer
-    [86019] = { source = AbilityState.SOURCE_PREDICTED, durationMs = 6000 },
-    [93778] = { source = AbilityState.SOURCE_PREDICTED, durationMs = 9000 },
+    [86156] = NativeSlotTimerProvider(), -- Arctic Blast
+    [117690] = NativeSlotTimerProvider(), -- Blighted Blastbones
+    [185908] = NativeSlotTimerProvider(), -- Cruxweaver Armor
+    [63302] = NativeSlotTimerProvider(), -- Proximity Detonation
+    [114716] = PlayerEffectProvider({ 46327 }), -- Crystal Fragments proc
+    [92163] = ToggleProvider(), -- Warden bear ultimate
+    [217699] = ToggleProvider(), -- Banner Bearer
+    [40382] = CastCycleProvider(20000, true), -- Barbed Trap
+    [182988] = CastCycleProvider(20000, true), -- Fulminating Rune
+    [86019] = CastCycleProvider(6000, false), -- Subterranean Assault
+    [93778] = CastCycleProvider(9000, false), -- Deep Fissure
 }
 
 -- ESO can expose different IDs for the same slotted ability family while a
@@ -38,6 +76,8 @@ local PROVIDERS = {
 -- stable tracker identity; the other IDs are native state/effect variants.
 local ABILITY_FAMILIES = {
     { 114716, 46324 }, -- Crystal Fragments slotted identity / proc cast variant
+    { 182988, 201296 }, -- Fulminating Rune stamina / magicka effective variants
+    { 63302, 61487 }, -- Proximity Detonation effective / base progression IDs
     { 114860, 117330, 114861 }, -- Blastbones
     { 117690, 117693, 117691 }, -- Blighted Blastbones
     { 117749, 117773, 117750 }, -- Stalking Blastbones
@@ -281,6 +321,7 @@ function AbilityState.Resolve(abilityId, entries)
     end
 
     local provider = PROVIDERS[abilityId]
+    state.providerStrategy = provider and provider.strategy
     local capabilities = GetCapabilities(abilityId)
     local hasToggleSample = false
     for _, sample in ipairs(state.samples) do
@@ -405,6 +446,13 @@ function AbilityState.Resolve(abilityId, entries)
         state.phase = AbilityState.PHASE_INACTIVE
         state.source = AbilityState.SOURCE_UNIT_EFFECT
         state.confidence = "observed"
+    elseif provider
+        and provider.source == AbilityState.SOURCE_PREDICTED
+        and provider.initialInactive == true then
+        state.active = false
+        state.phase = AbilityState.PHASE_INACTIVE
+        state.source = AbilityState.SOURCE_PREDICTED
+        state.confidence = "explicit"
     end
     return state
 end
@@ -515,6 +563,9 @@ function AbilityState.Describe(state)
     end
     if state.effectAbilityId ~= nil then
         parts[#parts + 1] = "effectAbility=" .. tostring(state.effectAbilityId)
+    end
+    if state.providerStrategy ~= nil then
+        parts[#parts + 1] = "provider=" .. tostring(state.providerStrategy)
     end
     for _, sample in ipairs(state.samples or {}) do
         parts[#parts + 1] = string.format(

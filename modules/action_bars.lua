@@ -115,6 +115,18 @@ local function RefreshOverlays(source)
     end
 end
 
+local function BuildBarsSignature(bars)
+    local parts = {}
+    for _, key in ipairs({ "front", "back" }) do
+        local ids = {}
+        for _, entry in ipairs(bars[key] or {}) do
+            ids[#ids + 1] = tostring(entry.abilityId or 0)
+        end
+        parts[#parts + 1] = key .. "=" .. table.concat(ids, ",")
+    end
+    return table.concat(parts, "|")
+end
+
 local function PollActivityTransitions()
     if not (ADDON.Priority and type(ADDON.Priority.ListTrackers) == "function") then
         return
@@ -191,7 +203,11 @@ function ActionBars.Capture()
 end
 
 function ActionBars.Refresh(source)
-    ActionBars.bars = ActionBars.Capture()
+    local bars = ActionBars.Capture()
+    local signature = BuildBarsSignature(bars)
+    local barsChanged = ActionBars.barsSignature ~= signature
+    ActionBars.bars = bars
+    ActionBars.barsSignature = signature
     if ADDON.IsDebugModeEnabled and ADDON.IsDebugModeEnabled() then
         local parts = {}
         for key, entries in pairs(ActionBars.bars) do
@@ -205,6 +221,11 @@ function ActionBars.Refresh(source)
     end
     if ADDON.Window and type(ADDON.Window.RefreshBars) == "function" then
         ADDON.Window.RefreshBars()
+    end
+    if barsChanged
+        and ADDON.Settings
+        and type(ADDON.Settings.RequestSettingsRefresh) == "function" then
+        ADDON.Settings.RequestSettingsRefresh(true)
     end
     RefreshOverlays(source or "bar-refresh")
 end

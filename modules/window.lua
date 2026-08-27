@@ -304,6 +304,9 @@ function Window.RefreshDetails()
             local selectedTracker = ADDON.Priority.EnsureTracker(entry)
             ADDON.Priority.SetCondition(selectedTracker, value)
             Window.RefreshDetails()
+            if ADDON.Settings then
+                ADDON.Settings.RequestSettingsRefresh(true)
+            end
         end
     )
     local priorityLabels, priorityValues = PriorityChoices()

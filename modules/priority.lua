@@ -186,24 +186,39 @@ function Priority.SetPosition(tracker, x, y)
     tracker.y = tonumber(y)
 end
 
-function Priority.IsEligible(tracker)
+local function EvaluateEligibility(tracker, resolvedState)
     if not (tracker
         and tracker.enabled == true
         and ADDON.ActionBars
         and ADDON.ActionBars.IsAbilitySlotted(tracker.abilityId)) then
-        return false
+        return false, "not-enabled-or-slotted"
     end
 
     if tracker.condition == Priority.CONDITION_SLOTTED then
-        return true
+        return true, "slotted"
     end
 
-    local state = ADDON.ActionBars.GetAbilityState(tracker.abilityId)
+    local state = resolvedState or ADDON.ActionBars.GetAbilityState(tracker.abilityId)
     if state.active == nil then
-        return false
+        -- UNKNOWN is not reclassified as inactive. The inactive tracker is
+        -- shown provisionally so an unsupported or not-yet-learned ability
+        -- cannot remove the reminder before its first observed activation.
+        if tracker.condition == Priority.CONDITION_INACTIVE then
+            return true, "unknown-inactive-fallback"
+        end
+        return false, "unknown"
     end
-    return tracker.condition == Priority.CONDITION_ACTIVE and state.active
-        or tracker.condition == Priority.CONDITION_INACTIVE and not state.active
+    if tracker.condition == Priority.CONDITION_ACTIVE then
+        return state.active == true, state.active == true and "active" or "inactive"
+    end
+    if tracker.condition == Priority.CONDITION_INACTIVE then
+        return state.active == false, state.active == false and "inactive" or "active"
+    end
+    return false, "unknown-condition"
+end
+
+function Priority.IsEligible(tracker)
+    return EvaluateEligibility(tracker)
 end
 
 function Priority.Evaluate(showAllConfigured)
@@ -298,8 +313,9 @@ function Priority.DebugSnapshot()
         if ADDON.ActionBars and ADDON.ActionBars.GetAbilityActivityDetails then
             active, detail, state = ADDON.ActionBars.GetAbilityActivityDetails(tracker.abilityId)
         end
+        local eligible, eligibilityReason = EvaluateEligibility(tracker, state)
         rows[#rows + 1] = string.format(
-            "%s ability=%s enabled=%s condition=%s activeOrReady=%s phase=%s source=%s confidence=%s priority=%s eligible=%s visible=%s state=[%s]",
+            "%s ability=%s enabled=%s condition=%s activeOrReady=%s phase=%s source=%s confidence=%s priority=%s eligible=%s eligibilityReason=%s visible=%s state=[%s]",
             tostring(tracker.id),
             tostring(tracker.abilityId),
             tostring(tracker.enabled),
@@ -309,7 +325,8 @@ function Priority.DebugSnapshot()
             tostring(state and state.source),
             tostring(state and state.confidence),
             tracker.priority == Priority.ALWAYS and "always" or "P" .. tostring(tracker.priority),
-            tostring(Priority.IsEligible(tracker)),
+            tostring(eligible),
+            tostring(eligibilityReason),
             tostring(visibleIds[tracker.id] == true),
             tostring(detail)
         )

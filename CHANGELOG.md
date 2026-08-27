@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.35-beta - 2026-08-27
+
+- Show an enabled, slotted inactive-condition tracker provisionally while its ability state is still `UNKNOWN`, covering first-use native-timer abilities such as Stampede without per-ability IDs.
+- Preserve `UNKNOWN` in the evidence engine and expose `eligibilityReason=unknown-inactive-fallback` in debug output instead of falsely classifying missing data as inactive.
+- Keep disabled and unslotted trackers excluded, and let any observed positive provider immediately override the visibility fallback.
+
+## 0.2.34-beta - 2026-08-27
+
+- Add Proximity Detonation's effective/base ID family and native slot-timer provider so its inactive condition works before the first cast.
+- Refactor verified ability-state rules into reusable native-timer, player-effect, toggle, and cast-cycle provider strategies.
+- Document the evidence-first procedure for future abilities without treating missing generic data as inactive.
+
+## 0.2.33-beta - 2026-08-27
+
+- Order the LAM tracker selector by current front-bar and back-bar slots, label configured abilities that are no longer slotted, and refresh it when bar contents change.
+- Add explicit inactive-state providers for Cruxweaver Armor, Barbed Trap, and both effective Fulminating Rune variants.
+- Add a character-wide 32-128 pixel HUD icon-size slider while preserving tracker positions.
+
+## 0.2.32-beta - 2026-08-27
+
+- Replaced the one-time per-tracker LAM rows with a stable current-profile ability selector and enable/priority controls.
+- Refresh the selector when a tracker is created or the active role profile changes, in both standalone LAM and EZOCore-hosted settings.
+
+## 0.2.31-beta - 2026-08-27
+
+- Fixed PvP target-frame initialization by removing the invalid zero-sized edge texture from the solid health-bar fill.
+
 ## 0.2.30-beta - 2026-08-27
 
 - Match Crystal Fragments' slotted ID, proc cast variant, and player proc effect through one stable tracker identity, allowing active and inactive conditions to follow the loaded proc.

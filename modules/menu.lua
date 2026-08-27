@@ -5,6 +5,10 @@ local ADDON = EZOCombat
 local Settings = ADDON.Settings
 local PANEL_ID = "EZOCombatOptions"
 local INFO_HEADER_TEXTURE = "EsoUI/Art/Miscellaneous/help_icon.dds"
+local TRACKER_SELECTOR_REFERENCE = "EZOCombatTrackerSelector"
+
+Settings.trackerChoiceLabels = Settings.trackerChoiceLabels or {}
+Settings.trackerChoiceValues = Settings.trackerChoiceValues or {}
 
 local function CreateInfoHeader(name, tooltip)
     return {
@@ -44,15 +48,139 @@ local function PriorityModeChoices()
     }
 end
 
-local function AbilityLabel(tracker)
-    local name = ""
+local function AbilityLabel(tracker, currentName)
+    local name = tostring(currentName or "")
     if type(GetAbilityName) == "function" then
-        local ok, value = pcall(GetAbilityName, tracker.abilityId)
-        if ok and value then
-            name = zo_strformat("<<C:1>>", value)
+        if name == "" then
+            local ok, value = pcall(GetAbilityName, tracker.abilityId)
+            if ok and value then
+                name = value
+            end
         end
     end
-    return name ~= "" and name or tostring(tracker.abilityId)
+    return name ~= "" and zo_strformat("<<C:1>>", name) or tostring(tracker.abilityId)
+end
+
+local function ClearArray(values)
+    for index = #values, 1, -1 do
+        values[index] = nil
+    end
+end
+
+local function FindSelectedTracker(trackers)
+    local selectedAbilityId = tonumber(Settings.selectedTrackerAbilityId)
+    if selectedAbilityId then
+        for _, tracker in ipairs(trackers) do
+            if tracker.abilityId == selectedAbilityId then
+                return tracker
+            end
+        end
+    end
+    return trackers[1]
+end
+
+local function FindTrackerForAbility(trackers, abilityId)
+    for _, tracker in ipairs(trackers) do
+        local equivalent = tracker.abilityId == abilityId
+        if not equivalent
+            and ADDON.AbilityState
+            and type(ADDON.AbilityState.AreAbilityIdsEquivalent) == "function" then
+            equivalent = ADDON.AbilityState.AreAbilityIdsEquivalent(tracker.abilityId, abilityId)
+        end
+        if equivalent then
+            return tracker
+        end
+    end
+    return nil
+end
+
+local function GetOrderedTrackerRows(trackers)
+    local rows = {}
+    local seen = {}
+    local bars = ADDON.ActionBars and ADDON.ActionBars.bars or {}
+    local orderedBars = {
+        { key = "front", label = GetString(SI_EZOCOMBAT_FRONT_BAR) },
+        { key = "back", label = GetString(SI_EZOCOMBAT_BACK_BAR) },
+    }
+
+    for _, bar in ipairs(orderedBars) do
+        for _, entry in ipairs(bars[bar.key] or {}) do
+            local tracker = FindTrackerForAbility(trackers, entry.abilityId)
+            if tracker and not seen[tracker.id] then
+                seen[tracker.id] = true
+                rows[#rows + 1] = {
+                    tracker = tracker,
+                    label = zo_strformat(
+                        GetString(SI_EZOCOMBAT_TRACKER_BAR_LABEL),
+                        bar.label,
+                        AbilityLabel(tracker, entry.name)
+                    ),
+                }
+            end
+        end
+    end
+
+    for _, tracker in ipairs(trackers) do
+        if not seen[tracker.id] then
+            rows[#rows + 1] = {
+                tracker = tracker,
+                label = zo_strformat(
+                    GetString(SI_EZOCOMBAT_TRACKER_UNSLOTTED_LABEL),
+                    AbilityLabel(tracker)
+                ),
+            }
+        end
+    end
+    return rows
+end
+
+local function RefreshTrackerChoices()
+    local labels = Settings.trackerChoiceLabels
+    local values = Settings.trackerChoiceValues
+    local trackers = ADDON.Priority.ListTrackers()
+    local selectedTracker = FindSelectedTracker(trackers)
+    local rows = GetOrderedTrackerRows(trackers)
+
+    ClearArray(labels)
+    ClearArray(values)
+    for _, row in ipairs(rows) do
+        labels[#labels + 1] = row.label
+        values[#values + 1] = row.tracker.abilityId
+    end
+
+    if selectedTracker then
+        Settings.selectedTrackerAbilityId = selectedTracker.abilityId
+    else
+        labels[1] = GetString(SI_EZOCOMBAT_TRACKER_NONE)
+        values[1] = 0
+        Settings.selectedTrackerAbilityId = nil
+    end
+    return labels, values
+end
+
+local function GetSelectedTracker()
+    local trackers = ADDON.Priority.ListTrackers()
+    local tracker = FindSelectedTracker(trackers)
+    if tracker then
+        Settings.selectedTrackerAbilityId = tracker.abilityId
+    else
+        Settings.selectedTrackerAbilityId = nil
+    end
+    return tracker
+end
+
+local function RefreshStandaloneTrackerSelector()
+    if not ADDON._lamPanel then
+        return
+    end
+    local labels, values = RefreshTrackerChoices()
+    local control = _G[TRACKER_SELECTOR_REFERENCE]
+    if control and type(control.UpdateChoices) == "function" then
+        control:UpdateChoices(labels, values)
+        if type(control.UpdateValue) == "function" then
+            control:UpdateValue()
+        end
+    end
 end
 
 function Settings.RequestSettingsRefresh(forceRebuild)
@@ -72,6 +200,7 @@ function Settings.RequestSettingsRefresh(forceRebuild)
 
     local util = LibAddonMenu2 and LibAddonMenu2.util
     if util and type(util.RequestRefreshIfNeeded) == "function" and ADDON._lamPanel then
+        RefreshStandaloneTrackerSelector()
         pcall(util.RequestRefreshIfNeeded, ADDON._lamPanel)
     end
 end
@@ -79,6 +208,8 @@ end
 local function BuildOptions()
     local roleLabels, roleValues = RoleChoices()
     local priorityModeLabels, priorityModeValues = PriorityModeChoices()
+    local trackerLabels, trackerValues = RefreshTrackerChoices()
+    local priorityLabels, priorityValues = PriorityChoices()
     local options = {
         CreateInfoHeader(GetString(SI_EZOCOMBAT_OPTIONS_GENERAL), GetString(SI_EZOCOMBAT_OPTIONS_GENERAL_TOOLTIP)),
         {
@@ -103,6 +234,22 @@ local function BuildOptions()
                 Settings.RequestSettingsRefresh(false)
             end,
             default = true,
+        },
+        {
+            type = "slider",
+            name = GetString(SI_EZOCOMBAT_ICON_SIZE),
+            tooltip = GetString(SI_EZOCOMBAT_ICON_SIZE_TOOLTIP),
+            min = ADDON.Overlays.MIN_ICON_SIZE,
+            max = ADDON.Overlays.MAX_ICON_SIZE,
+            step = 2,
+            decimals = 0,
+            getFunc = ADDON.Overlays.GetIconSize,
+            setFunc = function(value)
+                ADDON.Overlays.SetIconSize(value)
+                Settings.RequestSettingsRefresh(false)
+            end,
+            default = ADDON.Overlays.DEFAULT_ICON_SIZE,
+            width = "full",
         },
         {
             type = "dropdown",
@@ -326,44 +473,66 @@ local function BuildOptions()
         },
     }
 
-    local trackers = ADDON.Priority.ListTrackers()
     table.insert(options, CreateInfoHeader(
         GetString(SI_EZOCOMBAT_OPTIONS_TRACKERS),
         GetString(SI_EZOCOMBAT_OPTIONS_TRACKERS_TOOLTIP)
     ))
-    for _, tracker in ipairs(trackers) do
-        local label = AbilityLabel(tracker)
-        local priorityLabels, priorityValues = PriorityChoices()
-        table.insert(options, {
-            type = "checkbox",
-            name = label,
-            tooltip = GetString(SI_EZOCOMBAT_TRACKER_ENABLED_TOOLTIP),
-            getFunc = function()
-                return tracker.enabled == true
-            end,
-            setFunc = function(value)
-                ADDON.Priority.SetEnabled(tracker, value == true)
-                Settings.RequestSettingsRefresh(false)
-            end,
-            width = "half",
-        })
-        table.insert(options, {
-            type = "dropdown",
-            name = GetString(SI_EZOCOMBAT_PRIORITY),
-            tooltip = GetString(SI_EZOCOMBAT_PRIORITY_TOOLTIP),
-            choices = priorityLabels,
-            choicesValues = priorityValues,
-            getFunc = function()
-                return tracker.priority
-            end,
-            setFunc = function(value)
-                ADDON.Priority.SetPriority(tracker, value)
-                Settings.RequestSettingsRefresh(false)
-            end,
-            default = ADDON.Priority.DEFAULT,
-            width = "half",
-        })
-    end
+    table.insert(options, {
+        type = "dropdown",
+        name = GetString(SI_EZOCOMBAT_TRACKER_SELECT),
+        tooltip = GetString(SI_EZOCOMBAT_TRACKER_SELECT_TOOLTIP),
+        choices = trackerLabels,
+        choicesValues = trackerValues,
+        getFunc = function()
+            local tracker = GetSelectedTracker()
+            return tracker and tracker.abilityId or 0
+        end,
+        setFunc = function(value)
+            Settings.selectedTrackerAbilityId = tonumber(value)
+            Settings.RequestSettingsRefresh(false)
+        end,
+        reference = TRACKER_SELECTOR_REFERENCE,
+        width = "full",
+    })
+    table.insert(options, {
+        type = "checkbox",
+        name = GetString(SI_EZOCOMBAT_TRACKER_ENABLED),
+        tooltip = GetString(SI_EZOCOMBAT_TRACKER_ENABLED_TOOLTIP),
+        getFunc = function()
+            local tracker = GetSelectedTracker()
+            return tracker and tracker.enabled == true or false
+        end,
+        setFunc = function(value)
+            local tracker = GetSelectedTracker()
+            ADDON.Priority.SetEnabled(tracker, value == true)
+            Settings.RequestSettingsRefresh(false)
+        end,
+        disabled = function()
+            return GetSelectedTracker() == nil
+        end,
+        width = "half",
+    })
+    table.insert(options, {
+        type = "dropdown",
+        name = GetString(SI_EZOCOMBAT_PRIORITY),
+        tooltip = GetString(SI_EZOCOMBAT_PRIORITY_TOOLTIP),
+        choices = priorityLabels,
+        choicesValues = priorityValues,
+        getFunc = function()
+            local tracker = GetSelectedTracker()
+            return tracker and tracker.priority or ADDON.Priority.DEFAULT
+        end,
+        setFunc = function(value)
+            local tracker = GetSelectedTracker()
+            ADDON.Priority.SetPriority(tracker, value)
+            Settings.RequestSettingsRefresh(false)
+        end,
+        disabled = function()
+            return GetSelectedTracker() == nil
+        end,
+        default = ADDON.Priority.DEFAULT,
+        width = "half",
+    })
     return options
 end
 

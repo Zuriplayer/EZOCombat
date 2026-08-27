@@ -1,8 +1,8 @@
 ## Title: E|cB040FFZ|rOCombat
 ## Description: Visual action-bar helper with manual HUD icons and P1-P5 display ordering. Optional add-ons: LibDebugLogger, DebugLogViewer, EZOCore.
 ## Author: @Zuriplayer
-## Version: 0.2.30-beta
-## AddOnVersion: 230
+## Version: 0.2.35-beta
+## AddOnVersion: 235
 ## APIVersion: 101049 101050
 ## DependsOn: LibAddonMenu-2.0
 ## OptionalDependsOn: LibDebugLogger DebugLogViewer EZOCore
