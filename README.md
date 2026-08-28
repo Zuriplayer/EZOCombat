@@ -8,7 +8,7 @@ Support, bug reports, and suggestions: https://discord.gg/ekw8zUAcRm
 
 ## Beta Status
 
-Version: `0.2.35-beta`
+Version: `0.2.39-beta`
 
 This functional beta provides the persistent UI, priority foundation, and a layered ability-state engine. Ability-specific effect mappings, remaining-time thresholds, and class rule packs still require separate in-client verification.
 
@@ -40,8 +40,11 @@ This functional beta provides the persistent UI, priority foundation, and a laye
 - Automatic class detection and automatic role selection from the role selected in the Group Finder.
 - Manual role selection in LAM when automatic role detection is off. The fallback role is Damage.
 - Persistent tracked-ability profiles per character, class, and role.
-- HUD icons created from an ability in the action-bar window. Icons can be moved and disabled directly with their `X` button or through the selected-ability editor in LAM.
+- HUD icons created from an ability in the action-bar window. Manual mode preserves each icon's independent mouse position; automatic vertical and horizontal modes move the complete icon group. Icons can be disabled directly with their `X` button or through the selected-ability editor in LAM.
 - Character-wide HUD icon size from 32 to 128 pixels in LAM. Changing it resizes existing trackers without changing their saved top-left positions.
+- Manual, vertical-by-priority, and horizontal-by-priority HUD arrangements. Vertical mode places `Always visible`, P1, P2, P3, P4, and P5 from top to bottom and puts equal-priority icons side by side. Horizontal mode places those groups from left to right and stacks equal-priority icons vertically.
+- Automatic layouts reserve stable cells from every enabled tracker that is still slotted in the current profile. Activity conditions and the `Show all`/highest/two-highest policy only hide or show those cells, so ordinary combat-state and weapon-bar transitions do not reflow the remaining icons. Groups wrap to extra rows or columns when required by the screen size.
+- Automatic-layout alignment, icon spacing, and priority-group spacing are configurable in LAM. Each class/role profile keeps separate normalized vertical and horizontal mouse-drag positions, while switching back to manual restores the untouched individual icon positions. Optional EZOCore `family.layout` integration can temporarily preview all configured cells for group positioning.
 - Each visible HUD icon shows its native keyboard or gamepad action-slot binding underneath while the ability is on the active weapon bar. The binding is hidden when the ability is only on the other bar.
 - Hotbar-specific effective ability IDs are resolved for each bar, preventing weapon-dependent variants such as Blockade of Fire from changing tracked identity after a weapon swap.
 - Visibility conditions: while slotted; while active and slotted; and while inactive and slotted. Normal ultimates use ready-to-cast as their active state.
@@ -60,10 +63,12 @@ This functional beta provides the persistent UI, priority foundation, and a laye
 - Global priority management in LAM: show all eligible levels, only the highest eligible level, or the two highest eligible levels. The two-level mode skips empty levels, so eligible P1 and P3 abilities are shown when P2 has none.
 - The LAM tracked-ability section uses one current-profile selector with enable and priority controls. Slotted trackers follow front-bar then back-bar slot order, while configured unslotted trackers are clearly labelled. It refreshes when bar contents, tracked abilities, or the active role profile change, both in standalone LAM and when hosted by EZOCore.
 - LAM sections use the purple information icon for section-wide help; each individual setting keeps its specific help on that field.
-- PvP enemy target frame limited to attackable player targets in AvA zones and active battlegrounds. It shows the target name, native current/max health and percentage, class and alliance icons, level or CP, and AvA rank when ESO provides those values.
+- PvP enemy target frame limited by default to attackable player targets in AvA zones and active battlegrounds. It shows the target name, native current/max health and percentage, class and alliance icons, level or CP, and AvA rank when ESO provides those values.
 - Configurable low-health alert that shows a warning icon for five seconds when the enemy target crosses below the selected percentage. Repeated health events do not restart the timer.
-- Mouse-only PvP target-frame positioning preview with a persisted position. It is available only in PvP HUD scenes and never forces the frame visible during normal gameplay without an eligible target.
-- Optional PvP inverted damage cone using ESO's native scrolling combat text. Its tip starts above the target's head, opens upward, and exposes adjustable tip distance, width, row spacing, and repeated-hit spacing. The standard SCT position and cloud are restored outside PvP or when the feature is disabled.
+- Explicit PvE dummy-test scope for the target frame. When selected in LAM, the frame can follow the current attackable reticle target outside PvP so health, movement, and the low-health alert can be verified on dummies.
+- Mouse-only target-frame positioning preview with a persisted position. Enabling move mode from a HUD scene requests ESO UI mouse mode and shows a stable preview instead of live target data, so losing the current reticle target while placing the frame does not hide it. In the default PvP scope it is available only in PvP HUD scenes; in the dummy-test scope it is also available outside PvP for verification. Optional EZOCore `family.layout` integration registers the same move mode as `ezocombat.pvp_target` while keeping the local LAM checkbox as fallback.
+- Optional PvP inverted damage cone using ESO's native scrolling combat text. Its tip starts above the target's head, opens upward, and exposes adjustable tip distance, width, row spacing, and repeated-hit spacing. The default scope applies only to PvP player damage.
+- Explicit PvE dummy-test scope for the inverted damage cone. When selected, EZOCombat also permits monster/dummy targets outside PvP and restores the previous SCT slot/cloud before switching between PvP and test scopes.
 - English and Spanish runtime localization.
 - Opt-in diagnostics through LAM or `/ezocombatdebug`, using LibDebugLogger and optional chat mirroring.
 
@@ -85,9 +90,9 @@ Future state rules and alternate effect-ID mappings will be registered per abili
 1. Open the action-bar window from LAM, `/ezocombat`, or its ESO Controls binding (`Shift+NumPad 3` by default when free).
 2. Right-click a slotted ability in either bar to keep its configuration open.
 3. Enable its HUD icon and choose its visibility condition and `Always visible` or `P1`-`P5` category from the window selectors. In LAM, select any configured ability to edit its enabled state and priority, alongside the global priority-management mode.
-4. Adjust **HUD icon size** in LAM if required, then drag a visible icon to its preferred HUD position. Use its `X` button or the selected-ability LAM checkbox to disable it.
-5. In the PvP enemy target section, enable the frame and low-health alert, choose the threshold, and enable **Move PvP target frame** to drag its preview with the mouse while in an AvA zone or active battleground.
-6. To test the optional damage display, enable **Use inverted PvP damage cone** in the PvP floating-damage section and tune the tip distance, cone width, row spacing, and minimum text spacing. It affects ESO's native SCT damage slot only while in PvP.
+4. Choose **Manual**, **Vertical by priority**, or **Horizontal by priority** in LAM. In manual mode, drag each visible icon independently. In an automatic mode, drag any visible icon with the mouse to move the complete group; alignment and both spacing values are configurable, and each orientation keeps its own position. Use `Show all configured` while positioning every enabled and slotted tracker.
+5. In the PvP enemy target section, enable the frame and low-health alert, choose **PvP only** for real PvP or **PvE dummy test** for dummy verification, choose the threshold, and enable **Move PvP target frame** to drag its preview with the mouse.
+6. To test the optional damage display, enable **Use inverted PvP damage cone** in the PvP floating-damage section, choose **PvP only** or **PvE dummy test**, and tune the tip distance, cone width, row spacing, and minimum text spacing.
 
 ## Safety Limits
 
@@ -130,19 +135,28 @@ Verify in ESO:
 - `Show all` keeps every eligible priority level visible;
 - `Highest visible priority` shows only the lowest numbered eligible P-level, plus every eligible Always visible icon;
 - `Two highest visible priorities` shows the first two P-levels that contain eligible abilities, plus every eligible Always visible icon;
+- manual, vertical, and horizontal arrangements switch without overwriting the saved manual positions;
+- vertical mode orders Always visible and P1-P5 downward, keeps equal-priority icons in a horizontal row, and preserves empty cells while configured trackers are condition-hidden;
+- horizontal mode orders the same groups left to right, stacks equal-priority icons vertically, and preserves those cells under the highest/two-highest priority filters;
+- changing bars does not reorder automatic cells merely because the active weapon bar changed; replacing or moving a slotted ability intentionally recalculates the configured grid;
+- dragging any icon in an automatic arrangement moves the complete group smoothly, and vertical/horizontal positions remain independent after `/reloadui`;
+- Start, Centre, and End alignment, both spacing controls, automatic wrapping, position reset, and screen-resize recalculation behave without overlap at icon sizes from 32 to 128 pixels;
 - the LAM configured-ability selector lists only the active class/role profile, follows current front/back slot order, labels configured unslotted trackers, updates after changing bar contents, creating a tracker, or changing profile without reopening Settings, and edits only the selected ability in both standalone LAM and EZOCore-hosted Settings;
 - changing HUD icon size between 32 and 128 pixels resizes every current-character tracker, preserves its saved position, and remains applied after `/reloadui`;
 - the binding below an icon follows the current keyboard/gamepad mode and is hidden when its ability is not on the active bar;
 - dragging and disabling an icon persist through `/reloadui`;
 - an icon follows the cursor smoothly while being dragged, even when combat or HUD state refreshes occur during the drag;
 - `Show all configured` ignores activity and priority filtering only while selected, excludes disabled or unslotted trackers, and switches off when the action-bar window closes;
-- the PvP target frame remains hidden in PvE, against NPCs, against allied players, and when no attackable player target exists;
+- in **PvP only**, the target frame remains hidden in PvE, against NPCs, against allied players, and when no attackable player target exists;
+- in **PvE dummy test**, the target frame follows the current attackable reticle target outside PvP, including dummies, while class/alliance/rank fields stay hidden when ESO provides no data;
 - the PvP target frame updates when changing targets and when the target's native health changes;
 - class and alliance icons, level/CP, rank, and health values are shown only when ESO provides valid data;
 - the low-health warning appears once when the target crosses below the configured threshold, remains visible for five seconds, does not extend on repeated damage, and can trigger again after recovery;
-- enabling the PvP target-frame move mode shows a temporary preview only in PvP HUD scenes, mouse dragging persists its position, and disabling the mode removes the preview;
+- enabling the target-frame move mode from EZOCombat LAM or EZOCore `family.layout` requests mouse UI mode from HUD/HUD UI, shows a temporary preview only in eligible HUD scenes for the selected scope, mouse dragging persists its position, and disabling the mode removes the preview;
+- the EZOCore `ezocombat.pvp_target` surface is listed only when EZOCore is installed and cannot enable edit mode while the PvP target-frame feature itself is disabled;
 - the PvP target frame and warning hide while ESO's interactive radial or utility wheels are open and return when the wheel closes;
-- the optional PvP damage cone changes the native SCT position only in AvA or active battleground scenes, places the cone tip nearest the target head, and restores the previous SCT position and cloud when disabled or leaving PvP;
+- in **PvP only**, the optional damage cone changes the native SCT position only in AvA or active battleground scenes, places the cone tip nearest the target head, and restores the previous SCT position and cloud when disabled or leaving PvP;
+- in **PvE dummy test**, the optional damage cone can be tuned on monster/dummy targets outside PvP and restores the previous SCT position/cloud when disabled or when switching back to PvP-only scope;
 - the optional PvP damage cone applies independently to keyboard and gamepad SCT clouds and does not create combat input or duplicate combat events;
 - the window and HUD icons remain hidden outside HUD/HUD UI scenes.
 

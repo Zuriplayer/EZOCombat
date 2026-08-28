@@ -48,6 +48,40 @@ local function PriorityModeChoices()
     }
 end
 
+local function LayoutModeChoices()
+    return {
+        GetString(SI_EZOCOMBAT_LAYOUT_MODE_MANUAL),
+        GetString(SI_EZOCOMBAT_LAYOUT_MODE_VERTICAL),
+        GetString(SI_EZOCOMBAT_LAYOUT_MODE_HORIZONTAL),
+    }, {
+        ADDON.Layout.MODE_MANUAL,
+        ADDON.Layout.MODE_VERTICAL,
+        ADDON.Layout.MODE_HORIZONTAL,
+    }
+end
+
+local function LayoutAlignmentChoices()
+    return {
+        GetString(SI_EZOCOMBAT_LAYOUT_ALIGN_START),
+        GetString(SI_EZOCOMBAT_LAYOUT_ALIGN_CENTER),
+        GetString(SI_EZOCOMBAT_LAYOUT_ALIGN_END),
+    }, {
+        ADDON.Layout.ALIGN_START,
+        ADDON.Layout.ALIGN_CENTER,
+        ADDON.Layout.ALIGN_END,
+    }
+end
+
+local function PvpScopeChoices()
+    return {
+        GetString(SI_EZOCOMBAT_PVP_SCOPE_PVP),
+        GetString(SI_EZOCOMBAT_PVP_SCOPE_TEST),
+    }, {
+        "pvp",
+        "test",
+    }
+end
+
 local function AbilityLabel(tracker, currentName)
     local name = tostring(currentName or "")
     if type(GetAbilityName) == "function" then
@@ -208,6 +242,9 @@ end
 local function BuildOptions()
     local roleLabels, roleValues = RoleChoices()
     local priorityModeLabels, priorityModeValues = PriorityModeChoices()
+    local layoutModeLabels, layoutModeValues = LayoutModeChoices()
+    local layoutAlignmentLabels, layoutAlignmentValues = LayoutAlignmentChoices()
+    local pvpScopeLabels, pvpScopeValues = PvpScopeChoices()
     local trackerLabels, trackerValues = RefreshTrackerChoices()
     local priorityLabels, priorityValues = PriorityChoices()
     local options = {
@@ -253,6 +290,87 @@ local function BuildOptions()
         },
         {
             type = "dropdown",
+            name = GetString(SI_EZOCOMBAT_LAYOUT_MODE),
+            tooltip = GetString(SI_EZOCOMBAT_LAYOUT_MODE_TOOLTIP),
+            choices = layoutModeLabels,
+            choicesValues = layoutModeValues,
+            getFunc = ADDON.Layout.GetMode,
+            setFunc = function(value)
+                ADDON.Layout.SetMode(value)
+                Settings.RequestSettingsRefresh(true)
+            end,
+            default = ADDON.Layout.MODE_MANUAL,
+            width = "full",
+        },
+        {
+            type = "dropdown",
+            name = GetString(SI_EZOCOMBAT_LAYOUT_ALIGNMENT),
+            tooltip = GetString(SI_EZOCOMBAT_LAYOUT_ALIGNMENT_TOOLTIP),
+            choices = layoutAlignmentLabels,
+            choicesValues = layoutAlignmentValues,
+            getFunc = ADDON.Layout.GetAlignment,
+            setFunc = function(value)
+                ADDON.Layout.SetAlignment(value)
+                Settings.RequestSettingsRefresh(false)
+            end,
+            disabled = function()
+                return not ADDON.Layout.IsAutomatic()
+            end,
+            default = ADDON.Layout.ALIGN_START,
+            width = "full",
+        },
+        {
+            type = "slider",
+            name = GetString(SI_EZOCOMBAT_LAYOUT_ICON_SPACING),
+            tooltip = GetString(SI_EZOCOMBAT_LAYOUT_ICON_SPACING_TOOLTIP),
+            min = ADDON.Layout.MIN_SPACING,
+            max = ADDON.Layout.MAX_ICON_SPACING,
+            step = 1,
+            decimals = 0,
+            getFunc = ADDON.Layout.GetIconSpacing,
+            setFunc = function(value)
+                ADDON.Layout.SetIconSpacing(value)
+                Settings.RequestSettingsRefresh(false)
+            end,
+            disabled = function()
+                return not ADDON.Layout.IsAutomatic()
+            end,
+            default = ADDON.Layout.DEFAULT_ICON_SPACING,
+            width = "half",
+        },
+        {
+            type = "slider",
+            name = GetString(SI_EZOCOMBAT_LAYOUT_PRIORITY_SPACING),
+            tooltip = GetString(SI_EZOCOMBAT_LAYOUT_PRIORITY_SPACING_TOOLTIP),
+            min = ADDON.Layout.MIN_SPACING,
+            max = ADDON.Layout.MAX_PRIORITY_SPACING,
+            step = 1,
+            decimals = 0,
+            getFunc = ADDON.Layout.GetPrioritySpacing,
+            setFunc = function(value)
+                ADDON.Layout.SetPrioritySpacing(value)
+                Settings.RequestSettingsRefresh(false)
+            end,
+            disabled = function()
+                return not ADDON.Layout.IsAutomatic()
+            end,
+            default = ADDON.Layout.DEFAULT_PRIORITY_SPACING,
+            width = "half",
+        },
+        {
+            type = "button",
+            name = GetString(SI_EZOCOMBAT_LAYOUT_RESET_POSITION),
+            tooltip = GetString(SI_EZOCOMBAT_LAYOUT_RESET_POSITION_TOOLTIP),
+            func = function()
+                ADDON.Layout.ResetAnchor()
+            end,
+            disabled = function()
+                return not ADDON.Layout.IsAutomatic()
+            end,
+            width = "full",
+        },
+        {
+            type = "dropdown",
             name = GetString(SI_EZOCOMBAT_PRIORITY_MODE),
             tooltip = GetString(SI_EZOCOMBAT_PRIORITY_MODE_TOOLTIP),
             choices = priorityModeLabels,
@@ -276,6 +394,23 @@ local function BuildOptions()
                 Settings.RequestSettingsRefresh(true)
             end,
             default = true,
+        },
+        {
+            type = "dropdown",
+            name = GetString(SI_EZOCOMBAT_PVP_TARGET_SCOPE),
+            tooltip = GetString(SI_EZOCOMBAT_PVP_TARGET_SCOPE_TOOLTIP),
+            choices = pvpScopeLabels,
+            choicesValues = pvpScopeValues,
+            getFunc = ADDON.PvpTarget.GetScope,
+            setFunc = function(value)
+                ADDON.PvpTarget.SetScope(value)
+                Settings.RequestSettingsRefresh(false)
+            end,
+            disabled = function()
+                return not ADDON.PvpTarget.IsEnabled()
+            end,
+            default = "pvp",
+            width = "full",
         },
         {
             type = "checkbox",
@@ -333,6 +468,23 @@ local function BuildOptions()
                 Settings.RequestSettingsRefresh(true)
             end,
             default = false,
+        },
+        {
+            type = "dropdown",
+            name = GetString(SI_EZOCOMBAT_PVP_SCT_SCOPE),
+            tooltip = GetString(SI_EZOCOMBAT_PVP_SCT_SCOPE_TOOLTIP),
+            choices = pvpScopeLabels,
+            choicesValues = pvpScopeValues,
+            getFunc = ADDON.PvpSct.GetScope,
+            setFunc = function(value)
+                ADDON.PvpSct.SetScope(value)
+                Settings.RequestSettingsRefresh(false)
+            end,
+            disabled = function()
+                return not ADDON.PvpSct.IsEnabled()
+            end,
+            default = "pvp",
+            width = "full",
         },
         {
             type = "slider",

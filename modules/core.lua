@@ -12,6 +12,7 @@ local LANGUAGE_INHERIT = "inherit"
 local languageCallbackRegistered = false
 local ezocoreRegistered = false
 local debugControllerRegistered = false
+local layoutSurfacesRegistered = {}
 
 local function Print(message)
     if CHAT_SYSTEM and type(CHAT_SYSTEM.AddMessage) == "function" then
@@ -111,6 +112,9 @@ function ADDON.RunDebugSnapshot()
     if ADDON.Priority and type(ADDON.Priority.DebugSnapshot) == "function" then
         ADDON.Priority.DebugSnapshot()
     end
+    if ADDON.Layout and type(ADDON.Layout.DebugSnapshot) == "function" then
+        ADDON.Layout.DebugSnapshot()
+    end
     if ADDON.PvpTarget and type(ADDON.PvpTarget.DebugSnapshot) == "function" then
         ADDON.PvpTarget.DebugSnapshot()
     end
@@ -206,6 +210,7 @@ function ADDON.RegisterWithEZOCore()
                 "pvp.sct-cone",
                 "family.debug.controller",
                 "family.language.consumer",
+                "family.layout.consumer",
                 "family.settings.consumer",
             },
         })
@@ -213,6 +218,76 @@ function ADDON.RegisterWithEZOCore()
 
     ezocoreRegistered = ok and result == true
     return ezocoreRegistered
+end
+
+function ADDON.RegisterLayoutWithEZOCore()
+    if not (EZOCore and type(EZOCore.GetService) == "function") then
+        return false
+    end
+    local service = EZOCore:GetService("family.layout", 1)
+    if not service or type(service.RegisterSurface) ~= "function" then
+        return false
+    end
+
+    local registeredAny = false
+    local function RegisterSurface(surface)
+        if layoutSurfacesRegistered[surface.id] then
+            return false
+        end
+        local ok, result = pcall(function()
+            return service:RegisterSurface(surface)
+        end)
+        layoutSurfacesRegistered[surface.id] = ok and result == true
+        registeredAny = registeredAny or layoutSurfacesRegistered[surface.id]
+        return layoutSurfacesRegistered[surface.id]
+    end
+
+    if ADDON.Layout then
+        RegisterSurface({
+            id = "ezocombat.icons",
+            addonId = "ezocombat",
+            addonName = "EZOCombat",
+            name = function() return GetString(SI_EZOCOMBAT_LAYOUT_SURFACE) end,
+            tooltip = function() return GetString(SI_EZOCOMBAT_LAYOUT_SURFACE_TOOLTIP) end,
+            setEditMode = ADDON.Layout.SetEditMode,
+            isEditMode = ADDON.Layout.IsEditMode,
+            canEdit = function()
+                return ADDON.Layout.IsAutomatic()
+                    and ADDON.sv
+                    and ADDON.sv.general
+                    and ADDON.sv.general.enabled == true
+            end,
+        })
+    end
+
+    if ADDON.PvpTarget then
+        RegisterSurface({
+            id = "ezocombat.pvp_target",
+            addonId = "ezocombat",
+            addonName = "EZOCombat",
+            name = function() return GetString(SI_EZOCOMBAT_PVP_TARGET_SURFACE) end,
+            tooltip = function() return GetString(SI_EZOCOMBAT_PVP_TARGET_SURFACE_TOOLTIP) end,
+            sortOrder = 110,
+            setEditMode = function(enabled)
+                if enabled == true
+                    and not (ADDON.sv
+                        and ADDON.sv.pvpTarget
+                        and ADDON.sv.pvpTarget.enabled == true) then
+                    return false
+                end
+                ADDON.PvpTarget.SetMoveMode(enabled == true)
+                return ADDON.PvpTarget.IsMoveMode() == (enabled == true)
+            end,
+            isEditMode = ADDON.PvpTarget.IsMoveMode,
+            canEdit = function()
+                return ADDON.sv
+                    and ADDON.sv.pvpTarget
+                    and ADDON.sv.pvpTarget.enabled == true
+            end,
+        })
+    end
+
+    return registeredAny
 end
 
 function ADDON.RegisterDebugWithEZOCore()
@@ -268,6 +343,10 @@ function ADDON:Initialize()
     if self.Priority and type(self.Priority.Init) == "function" then
         self.Priority.Init()
     end
+    if self.Layout and type(self.Layout.Init) == "function" then
+        self.Layout.Init()
+    end
+    self:RegisterLayoutWithEZOCore()
     if self.Overlays and type(self.Overlays.Init) == "function" then
         self.Overlays.Init()
     end

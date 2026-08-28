@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.39-beta - 2026-08-28
+
+- Register the PvP target frame as its own optional EZOCore `family.layout` surface (`ezocombat.pvp_target`), so Settings > EZO can enable or disable the same mouse-only move preview exposed by EZOCombat's local LAM setting.
+- Keep the local move checkbox as the fallback when EZOCore is not installed, and reject EZOCore edit-mode activation while the PvP target-frame feature itself is disabled.
+
+## 0.2.38-beta - 2026-08-28
+
+- Keep the PvP target-frame move preview visible while mouse UI mode is active, so losing the current reticle target during placement does not hide the frame before it can be dragged.
+- When move mode is enabled from a HUD scene, request ESO UI mouse mode and show the stable preview instead of live target data until move mode is disabled.
+
+## 0.2.37-beta - 2026-08-28
+
+- Add explicit PvE dummy-test scopes for the PvP target frame and inverted damage cone so both features can be verified outside PvP without weakening the default PvP-only filters.
+- Keep the target frame strict by default for attackable enemy players in AvA or battlegrounds; the test scope allows the current attackable reticle target outside PvP.
+- Rework SCT scope handling so changing between PvP and dummy testing restores the previously modified SCT slot before preparing a slot compatible with the new target type.
+
+## 0.2.36-beta - 2026-08-28
+
+- Add manual, vertical-by-priority, and horizontal-by-priority HUD icon arrangements, including P5 and configurable start/centre/end alignment.
+- Keep automatic cells stable from enabled, slotted trackers while activity conditions and the all/highest/two-highest priority policy change visibility; equal-priority groups wrap when required by the screen size.
+- Preserve every manual tracker position, save separate normalized vertical and horizontal anchors per class/role profile, and move the complete automatic group by dragging any visible icon with the mouse.
+- Add configurable icon and priority spacing, automatic-position reset, screen-resize recalculation, diagnostics, and optional EZOCore `family.layout` registration.
+
 ## 0.2.35-beta - 2026-08-27
 
 - Show an enabled, slotted inactive-condition tracker provisionally while its ability state is still `UNKNOWN`, covering first-use native-timer abilities such as Stampede without per-ability IDs.

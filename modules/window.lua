@@ -490,12 +490,12 @@ function Window.Create()
     header:SetCenterColor(0.09, 0.05, 0.13, 0.96)
     header:SetMouseEnabled(true)
     header:SetHandler("OnMouseDown", function(_, button)
-        if button == MOUSE_BUTTON_INDEX_LEFT then
+        if button == MOUSE_BUTTON_INDEX_RIGHT then
             control:StartMoving()
         end
     end)
     header:SetHandler("OnMouseUp", function(_, button)
-        if button == MOUSE_BUTTON_INDEX_LEFT then
+        if button == MOUSE_BUTTON_INDEX_RIGHT then
             control:StopMovingOrResizing()
             Window.SavePosition()
         end

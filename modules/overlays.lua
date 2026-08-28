@@ -58,7 +58,7 @@ local function GetAbilityDetails(abilityId)
     return name, icon
 end
 
-local function ApplyPosition(control, tracker, index)
+local function ApplyManualPosition(control, tracker, index)
     -- Refreshes can arrive while ESO is moving the control. Re-anchoring a
     -- moving TopLevelWindow here makes the cursor-to-icon offset jump.
     if control.ezoCombatMoving == true then
@@ -74,6 +74,49 @@ local function ApplyPosition(control, tracker, index)
     local column = (index - 1) % 4
     local row = math.floor((index - 1) / 4)
     control:SetAnchor(CENTER, GuiRoot, CENTER, 140 + column * (iconSize + 34), -90 + row * (iconSize + 30))
+end
+
+local function ApplyAutomaticContainer(layoutResult)
+    local container = Overlays.autoContainer
+    if not container then
+        return
+    end
+    container:SetHidden(false)
+    if container.ezoCombatMoving == true then
+        return
+    end
+    container:SetDimensions(layoutResult.width, layoutResult.height)
+    local anchorX, anchorY = ADDON.Layout.GetAnchor(ADDON.Layout.GetMode())
+    container:ClearAnchors()
+    container:SetAnchor(
+        CENTER,
+        GuiRoot,
+        TOPLEFT,
+        anchorX * GuiRoot:GetWidth(),
+        anchorY * GuiRoot:GetHeight()
+    )
+end
+
+local function ApplyAutomaticPosition(control, position)
+    if not position or not Overlays.autoContainer then
+        return
+    end
+    if control:GetParent() ~= Overlays.autoContainer then
+        control:SetParent(Overlays.autoContainer)
+    end
+    control:SetMovable(false)
+    if Overlays.autoContainer.ezoCombatMoving == true then
+        return
+    end
+    control:ClearAnchors()
+    control:SetAnchor(TOPLEFT, Overlays.autoContainer, TOPLEFT, position.x, position.y)
+end
+
+local function PrepareManualControl(control)
+    if control:GetParent() ~= Overlays.root then
+        control:SetParent(Overlays.root)
+    end
+    control:SetMovable(true)
 end
 
 local function HideTooltip(control)
@@ -214,19 +257,32 @@ local function CreateControl(tracker)
     close:SetHandler("OnMouseExit", HideTooltip)
 
     control:SetHandler("OnMouseDown", function(_, button)
-        if button == MOUSE_BUTTON_INDEX_LEFT then
-            control.ezoCombatMoving = true
-            control:StartMoving()
+        if button == MOUSE_BUTTON_INDEX_RIGHT then
+            if ADDON.Layout and ADDON.Layout.IsAutomatic() and Overlays.autoContainer then
+                Overlays.autoContainer.ezoCombatMoving = true
+                Overlays.autoContainer:StartMoving()
+            else
+                control.ezoCombatMoving = true
+                control:StartMoving()
+            end
         end
     end)
     control:SetHandler("OnMouseUp", function(_, button)
-        if button == MOUSE_BUTTON_INDEX_LEFT then
-            control:StopMovingOrResizing()
-            control.ezoCombatMoving = false
+        if button == MOUSE_BUTTON_INDEX_RIGHT then
+            if ADDON.Layout and ADDON.Layout.IsAutomatic() and Overlays.autoContainer then
+                Overlays.autoContainer:StopMovingOrResizing()
+                Overlays.autoContainer.ezoCombatMoving = false
+            else
+                control:StopMovingOrResizing()
+                control.ezoCombatMoving = false
+            end
         end
     end)
     control:SetHandler("OnMoveStop", function()
         control.ezoCombatMoving = false
+        if ADDON.Layout and ADDON.Layout.IsAutomatic() then
+            return
+        end
         local current = ADDON.Priority and ADDON.Priority.GetTracker(tracker.abilityId)
         if current then
             ADDON.Priority.SetPosition(current, control:GetLeft(), control:GetTop())
@@ -260,6 +316,21 @@ function Overlays.Create()
     Overlays.root:SetAnchorFill(GuiRoot)
     Overlays.root:SetHidden(true)
     Overlays.controls = {}
+
+    Overlays.autoContainer = WM:CreateControl("EZOCombatAutomaticLayout", Overlays.root, CT_CONTROL)
+    Overlays.autoContainer:SetDimensions(1, 1)
+    Overlays.autoContainer:SetMovable(true)
+    Overlays.autoContainer:SetMouseEnabled(false)
+    Overlays.autoContainer:SetClampedToScreen(true)
+    Overlays.autoContainer:SetHidden(true)
+    Overlays.autoContainer:SetHandler("OnMoveStop", function(container)
+        container.ezoCombatMoving = false
+        if not (ADDON.Layout and ADDON.Layout.IsAutomatic()) then
+            return
+        end
+        local centerX, centerY = container:GetCenter()
+        ADDON.Layout.SetAnchorFromPixels(ADDON.Layout.GetMode(), centerX, centerY)
+    end)
     RegisterFragment()
     return Overlays.root
 end
@@ -272,9 +343,12 @@ function Overlays.Refresh()
     end
 
     local active = {}
-    local showAllConfigured = ADDON.Window
+    local showAllConfigured = (ADDON.Window
         and type(ADDON.Window.IsShowingAllConfigured) == "function"
-        and ADDON.Window.IsShowingAllConfigured()
+        and ADDON.Window.IsShowingAllConfigured())
+        or (ADDON.Layout
+            and type(ADDON.Layout.IsEditMode) == "function"
+            and ADDON.Layout.IsEditMode())
     local visible = ADDON.Priority
         and ADDON.Priority.Evaluate
         and ADDON.Priority.Evaluate(showAllConfigured)
@@ -288,6 +362,15 @@ function Overlays.Refresh()
             ClearBinding(control)
             control:SetHidden(true)
         end
+    end
+
+    local automatic = ADDON.Layout and ADDON.Layout.IsAutomatic()
+    local layoutResult
+    if automatic then
+        layoutResult = ADDON.Layout.Calculate(Overlays.GetIconSize(), KEYBIND_HEIGHT)
+        ApplyAutomaticContainer(layoutResult)
+    elseif Overlays.autoContainer then
+        Overlays.autoContainer:SetHidden(true)
     end
 
     local index = 0
@@ -305,10 +388,18 @@ function Overlays.Refresh()
         )
         UpdateBinding(control, tracker)
         ApplySize(control)
-        ApplyPosition(control, tracker, index)
+        if automatic then
+            ApplyAutomaticPosition(control, layoutResult.positions[tracker.id])
+        else
+            PrepareManualControl(control)
+            ApplyManualPosition(control, tracker, index)
+        end
         control:SetHidden(false)
     end
 
+    if automatic and Overlays.autoContainer then
+        Overlays.autoContainer:SetHidden(index == 0)
+    end
     Overlays.root:SetHidden(index == 0)
 end
 

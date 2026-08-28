@@ -14,6 +14,8 @@ local HEALTH_BAR_HEIGHT = 18
 local CLASS_ICON_SIZE = 28
 local DEFAULT_Y = 150
 local WARNING_TEXTURE = "EsoUI/Art/Miscellaneous/ESO_Icon_Warning.dds"
+local SCOPE_PVP = "pvp"
+local SCOPE_TEST = "test"
 
 local function IsPvpContext()
     local inAvA = false
@@ -54,7 +56,16 @@ local function IsAttackableTarget()
 end
 
 local function IsEligibleTarget()
-    return IsPvpContext() and DoesTargetExist() and IsPlayerTarget() and IsAttackableTarget()
+    if IsPvpContext() and DoesTargetExist() and IsPlayerTarget() and IsAttackableTarget() then
+        return true
+    end
+
+    local settings = ADDON.sv and ADDON.sv.pvpTarget or nil
+    if not settings or settings.scope ~= SCOPE_TEST then
+        return false
+    end
+
+    return DoesTargetExist() and IsAttackableTarget()
 end
 
 local function GetUnitText(functionName)
@@ -191,6 +202,15 @@ local function IsEnabled()
     return settings and settings.enabled == true
 end
 
+local function GetScope()
+    local settings = GetSettings()
+    return settings and settings.scope == SCOPE_TEST and SCOPE_TEST or SCOPE_PVP
+end
+
+local function IsPreviewContext()
+    return IsPvpContext() or GetScope() == SCOPE_TEST
+end
+
 local function IsLowHealthAlertEnabled()
     local settings = GetSettings()
     return settings and settings.lowHealthAlert == true
@@ -204,6 +224,24 @@ end
 
 local function GetMoveMode()
     return PvpTarget.moveMode == true
+end
+
+local function RequestMouseUIMode()
+    if not (SCENE_MANAGER and type(SCENE_MANAGER.SetInUIMode) == "function") then
+        return
+    end
+    if type(SCENE_MANAGER.IsShowing) ~= "function" then
+        return
+    end
+    if not (SCENE_MANAGER:IsShowing("hud") or SCENE_MANAGER:IsShowing("hudui")) then
+        return
+    end
+    if type(SCENE_MANAGER.IsInUIMode) == "function" and SCENE_MANAGER:IsInUIMode() then
+        return
+    end
+    pcall(function()
+        SCENE_MANAGER:SetInUIMode(true, false)
+    end)
 end
 
 local function ApplyPosition()
@@ -226,6 +264,26 @@ local function ResetAlert()
     if PvpTarget.alert then
         PvpTarget.alert:SetHidden(true)
     end
+end
+
+local function ShowMovePreview()
+    if not PvpTarget.frame or not IsPreviewContext() then
+        return false
+    end
+
+    PvpTarget.targetIdentity = nil
+    PvpTarget.wasBelowThreshold = false
+    ResetAlert()
+    PvpTarget.frame:SetHidden(false)
+    PvpTarget.name:SetText(GetString(SI_EZOCOMBAT_PVP_MOVE_PREVIEW))
+    PvpTarget.name:SetColor(1, 1, 1, 1)
+    PvpTarget.health:SetText(GetString(SI_EZOCOMBAT_PVP_MOVE_PREVIEW_HEALTH))
+    PvpTarget.healthFill:SetWidth(CONTENT_WIDTH)
+    PvpTarget.classIcon:SetHidden(true)
+    PvpTarget.allianceIcon:SetHidden(true)
+    PvpTarget.meta:SetText(GetString(SI_EZOCOMBAT_PVP_MOVE_PREVIEW_META))
+    PvpTarget.alert:SetHidden(true)
+    return true
 end
 
 local function ShowAlert()
@@ -277,25 +335,15 @@ local function UpdateData()
         return
     end
 
+    if GetMoveMode() and ShowMovePreview() then
+        return
+    end
+
     if not IsEligibleTarget() then
         PvpTarget.frame:SetHidden(true)
         PvpTarget.targetIdentity = nil
         PvpTarget.wasBelowThreshold = false
         ResetAlert()
-        if not GetMoveMode() then
-            return
-        end
-        if not IsPvpContext() then
-            return
-        end
-        PvpTarget.frame:SetHidden(false)
-        PvpTarget.name:SetText(GetString(SI_EZOCOMBAT_PVP_MOVE_PREVIEW))
-        PvpTarget.health:SetText(GetString(SI_EZOCOMBAT_PVP_MOVE_PREVIEW_HEALTH))
-        PvpTarget.healthFill:SetWidth(CONTENT_WIDTH)
-        PvpTarget.classIcon:SetHidden(true)
-        PvpTarget.allianceIcon:SetHidden(true)
-        PvpTarget.meta:SetText(GetString(SI_EZOCOMBAT_PVP_MOVE_PREVIEW_META))
-        PvpTarget.alert:SetHidden(true)
         return
     end
 
@@ -425,13 +473,13 @@ local function CreateControl()
     PvpTarget.meta:SetMouseEnabled(false)
 
     PvpTarget.frame:SetHandler("OnMouseDown", function(_, button)
-        if GetMoveMode() and button == MOUSE_BUTTON_INDEX_LEFT then
+        if GetMoveMode() and button == MOUSE_BUTTON_INDEX_RIGHT then
             PvpTarget.moving = true
             PvpTarget.frame:StartMoving()
         end
     end)
     PvpTarget.frame:SetHandler("OnMouseUp", function(_, button)
-        if button == MOUSE_BUTTON_INDEX_LEFT then
+        if button == MOUSE_BUTTON_INDEX_RIGHT then
             PvpTarget.frame:StopMovingOrResizing()
             PvpTarget.moving = false
         end
@@ -483,6 +531,23 @@ function PvpTarget.IsEnabled()
     return IsEnabled() == true
 end
 
+function PvpTarget.SetScope(scope)
+    local settings = GetSettings()
+    if not settings then
+        return false
+    end
+    settings.scope = scope == SCOPE_TEST and SCOPE_TEST or SCOPE_PVP
+    PvpTarget.targetIdentity = nil
+    PvpTarget.wasBelowThreshold = false
+    ResetAlert()
+    PvpTarget.Refresh()
+    return true
+end
+
+function PvpTarget.GetScope()
+    return GetScope()
+end
+
 function PvpTarget.SetLowHealthAlertEnabled(enabled)
     local settings = GetSettings()
     if not settings then
@@ -514,6 +579,9 @@ end
 
 function PvpTarget.SetMoveMode(enabled)
     PvpTarget.moveMode = enabled == true
+    if PvpTarget.moveMode then
+        RequestMouseUIMode()
+    end
     if PvpTarget.frame then
         if not PvpTarget.moveMode and PvpTarget.moving then
             PvpTarget.frame:StopMovingOrResizing()
@@ -538,6 +606,9 @@ function PvpTarget.Refresh()
         PvpTarget.frame:SetHidden(true)
         return
     end
+    if GetMoveMode() then
+        RequestMouseUIMode()
+    end
     UpdateData()
     local frameVisible = not PvpTarget.frame:IsHidden()
     PvpTarget.root:SetHidden(not frameVisible)
@@ -550,7 +621,8 @@ function PvpTarget.DebugSnapshot()
     local current, maximum = GetHealth()
     local percent = current and maximum and maximum > 0 and (current / maximum * 100) or nil
     ADDON.DebugLog(string.format(
-        "pvp-target context=%s exists=%s player=%s attackable=%s name=%s health=%s/%s percent=%s threshold=%s alert=%s move=%s",
+        "pvp-target scope=%s context=%s exists=%s player=%s attackable=%s name=%s health=%s/%s percent=%s threshold=%s alert=%s move=%s",
+        tostring(GetScope()),
         tostring(IsPvpContext()),
         tostring(DoesTargetExist()),
         tostring(IsPlayerTarget()),

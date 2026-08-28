@@ -18,6 +18,8 @@ local DEFAULT_TIP_DISTANCE = 20
 local DEFAULT_CONE_WIDTH = 70
 local DEFAULT_ROW_SPACING = 18
 local DEFAULT_MINIMUM_SPACING = 90
+local SCOPE_PVP = "pvp"
+local SCOPE_TEST = "test"
 
 local function SafeCall(functionName, ...)
     local callback = _G[functionName]
@@ -33,9 +35,16 @@ local function SafeCall(functionName, ...)
 end
 
 local function IsPvpContext()
-    local inAvA = type(IsInAvAZone) == "function" and IsInAvAZone() == true
-    local inBattleground = type(IsActiveWorldBattleground) == "function"
-        and IsActiveWorldBattleground() == true
+    local inAvA = false
+    local inBattleground = false
+    if type(IsInAvAZone) == "function" then
+        local ok, value = pcall(IsInAvAZone)
+        inAvA = ok and value == true
+    end
+    if type(IsActiveWorldBattleground) == "function" then
+        local ok, value = pcall(IsActiveWorldBattleground)
+        inBattleground = ok and value == true
+    end
     return inAvA or inBattleground
 end
 
@@ -50,6 +59,27 @@ end
 
 local function SafeCallAvailable(functionName)
     return type(_G[functionName]) == "function"
+end
+
+local function GetScope()
+    local settings = GetSettings()
+    return settings and settings.scope == SCOPE_TEST and SCOPE_TEST or SCOPE_PVP
+end
+
+local function IsActiveContext()
+    return IsPvpContext() or GetScope() == SCOPE_TEST
+end
+
+local function GetTargetTypes()
+    if GetScope() == SCOPE_TEST and _G.SCT_UNIT_TYPE_MONSTERS ~= nil then
+        return { _G.SCT_UNIT_TYPE_MONSTERS }
+    end
+
+    local targetTypes = {}
+    if _G.SCT_UNIT_TYPE_OTHER_PLAYERS ~= nil then
+        targetTypes[#targetTypes + 1] = _G.SCT_UNIT_TYPE_OTHER_PLAYERS
+    end
+    return targetTypes
 end
 
 local function IsNativeSctAvailable()
@@ -218,7 +248,7 @@ local function RestoreSlot(slotIndex, snapshot)
     return true
 end
 
-local function IsDamageSlot(slotIndex)
+local function IsDamageSlot(slotIndex, targetTypes)
     local shown = false
     for _, eventType in ipairs(DAMAGE_EVENT_TYPES) do
         if eventType ~= nil then
@@ -237,15 +267,20 @@ local function IsDamageSlot(slotIndex)
         return false
     end
 
-    local ok, allowsOtherPlayers = SafeCall(
-        "DoesSCTSlotAllowTargetType",
-        slotIndex,
-        _G.SCT_UNIT_TYPE_OTHER_PLAYERS
-    )
-    return ok and allowsOtherPlayers == true
+    for _, targetType in ipairs(targetTypes or {}) do
+        local ok, allowed = SafeCall(
+            "DoesSCTSlotAllowTargetType",
+            slotIndex,
+            targetType
+        )
+        if ok and allowed == true then
+            return true
+        end
+    end
+    return false
 end
 
-local function FindStandardDamageSlot()
+local function FindStandardDamageSlot(targetTypes)
     local ok, count = SafeCall("GetNumSCTSlots")
     if not ok then
         return nil
@@ -253,7 +288,7 @@ local function FindStandardDamageSlot()
 
     count = tonumber(count) or 0
     for slotIndex = 1, count do
-        if IsDamageSlot(slotIndex) then
+        if IsDamageSlot(slotIndex, targetTypes) then
             return slotIndex
         end
     end
@@ -271,14 +306,11 @@ local function SetOwnedSlotVisible(slotIndex, visible)
     end
 end
 
-local function CreateOwnedSlot(settings)
-    local ok, slotIndex = SafeCall("CreateNewSCTSlot")
-    if not ok or not IsValidSlot(slotIndex) then
-        return nil
-    end
-
+local function ConfigureOwnedSlot(slotIndex, targetTypes)
     SafeCall("ClearSCTSlotAllowedTargetTypes", slotIndex)
-    SafeCall("AddSCTSlotAllowedTargetType", slotIndex, _G.SCT_UNIT_TYPE_OTHER_PLAYERS)
+    for _, targetType in ipairs(targetTypes or {}) do
+        SafeCall("AddSCTSlotAllowedTargetType", slotIndex, targetType)
+    end
     SafeCall("ClearSCTSlotAllowedSourceTypes", slotIndex)
     if _G.SCT_UNIT_TYPE_LOCAL_PLAYER ~= nil then
         SafeCall("AddSCTSlotAllowedSourceType", slotIndex, _G.SCT_UNIT_TYPE_LOCAL_PLAYER)
@@ -286,6 +318,15 @@ local function CreateOwnedSlot(settings)
     if SafeCallAvailable("SetSCTSlotTargetReputationTypes") then
         SafeCall("SetSCTSlotTargetReputationTypes", slotIndex, false, false, true)
     end
+end
+
+local function CreateOwnedSlot(settings, targetTypes)
+    local ok, slotIndex = SafeCall("CreateNewSCTSlot")
+    if not ok or not IsValidSlot(slotIndex) then
+        return nil
+    end
+
+    ConfigureOwnedSlot(slotIndex, targetTypes)
 
     local keyboardOk, keyboardCloudId = SafeCall("CreateNewSCTCloud")
     local gamepadOk, gamepadCloudId = SafeCall("CreateNewSCTCloud")
@@ -302,12 +343,13 @@ local function CreateOwnedSlot(settings)
     return slotIndex
 end
 
-local function GetOrPrepareSlot(settings)
-    if IsValidSlot(settings.slotIndex) then
+local function GetOrPrepareSlot(settings, targetTypes)
+    if IsValidSlot(settings.slotIndex) and settings.mode == "owned" then
+        ConfigureOwnedSlot(settings.slotIndex, targetTypes)
         return tonumber(settings.slotIndex)
     end
 
-    local standardSlot = FindStandardDamageSlot()
+    local standardSlot = FindStandardDamageSlot(targetTypes)
     if standardSlot then
         local snapshot = CaptureSlot(standardSlot)
         if snapshot then
@@ -318,7 +360,7 @@ local function GetOrPrepareSlot(settings)
         end
     end
 
-    return CreateOwnedSlot(settings)
+    return CreateOwnedSlot(settings, targetTypes)
 end
 
 local function BuildConeCloud(cloudId, coneWidth, rowSpacing)
@@ -397,6 +439,7 @@ local function RestoreActiveSettings(settings)
 
     settings.applied = false
     settings.original = nil
+    settings.appliedScope = nil
     if settings.mode ~= "owned" then
         settings.mode = nil
         settings.slotIndex = nil
@@ -417,6 +460,7 @@ local function RecoverInterruptedApply(settings)
 
     settings.applied = false
     settings.original = nil
+    settings.appliedScope = nil
     if settings.mode ~= "owned" then
         settings.mode = nil
         settings.slotIndex = nil
@@ -441,6 +485,24 @@ function PvpSct.SetEnabled(enabled)
     settings.enabled = enabled == true
     PvpSct.Refresh()
     return settings.enabled == (enabled == true)
+end
+
+function PvpSct.SetScope(scope)
+    local settings = GetSettings()
+    if not settings then
+        return false
+    end
+    local nextScope = scope == SCOPE_TEST and SCOPE_TEST or SCOPE_PVP
+    if settings.scope ~= nextScope and settings.applied == true then
+        RestoreActiveSettings(settings)
+    end
+    settings.scope = nextScope
+    PvpSct.Refresh()
+    return true
+end
+
+function PvpSct.GetScope()
+    return GetScope()
 end
 
 function PvpSct.SetTipDistance(value)
@@ -516,7 +578,11 @@ function PvpSct.Refresh()
         PvpSct.recovered = true
     end
 
-    if not IsEnabled() or not IsPvpContext() then
+    if settings.applied == true and settings.appliedScope ~= GetScope() then
+        RestoreActiveSettings(settings)
+    end
+
+    if not IsEnabled() or not IsActiveContext() then
         if settings.applied == true then
             RestoreActiveSettings(settings)
         elseif settings.mode == "owned" and IsValidSlot(settings.slotIndex) then
@@ -527,7 +593,8 @@ function PvpSct.Refresh()
 
     local slotIndex = tonumber(settings.slotIndex)
     if settings.applied ~= true then
-        slotIndex = GetOrPrepareSlot(settings)
+        local targetTypes = GetTargetTypes()
+        slotIndex = GetOrPrepareSlot(settings, targetTypes)
         if not slotIndex then
             if ADDON.DebugLog then
                 ADDON.DebugLog("pvp-sct no compatible SCT damage slot")
@@ -535,6 +602,7 @@ function PvpSct.Refresh()
             return false
         end
         settings.applied = true
+        settings.appliedScope = GetScope()
     end
 
     if not IsValidSlot(slotIndex) then
@@ -542,6 +610,7 @@ function PvpSct.Refresh()
         settings.original = nil
         settings.mode = nil
         settings.slotIndex = nil
+        settings.appliedScope = nil
         return false
     end
 
@@ -554,10 +623,13 @@ function PvpSct.DebugSnapshot()
     end
     local settings = GetSettings()
     ADDON.DebugLog(string.format(
-        "pvp-sct enabled=%s pvp=%s applied=%s mode=%s slot=%s tip=%s width=%s spacing=%s minSpacing=%s native=%s",
+        "pvp-sct enabled=%s scope=%s pvp=%s activeContext=%s applied=%s appliedScope=%s mode=%s slot=%s tip=%s width=%s spacing=%s minSpacing=%s native=%s",
         tostring(IsEnabled()),
+        tostring(GetScope()),
         tostring(IsPvpContext()),
+        tostring(IsActiveContext()),
         tostring(settings and settings.applied == true),
+        tostring(settings and settings.appliedScope),
         tostring(settings and settings.mode),
         tostring(settings and settings.slotIndex),
         tostring(PvpSct.GetTipDistance()),
