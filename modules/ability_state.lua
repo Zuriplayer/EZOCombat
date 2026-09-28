@@ -6,12 +6,14 @@ local AbilityState = ADDON.AbilityState
 
 AbilityState.PHASE_ACTIVE_TIMED = "active_timed"
 AbilityState.PHASE_ACTIVE_TOGGLED = "active_toggled"
+AbilityState.PHASE_ACTIVE_STACKED = "active_stacked"
 AbilityState.PHASE_READY = "ready"
 AbilityState.PHASE_INACTIVE = "inactive"
 AbilityState.PHASE_UNKNOWN = "unknown"
 
 AbilityState.SOURCE_SLOT_TIMER = "slot_timer"
 AbilityState.SOURCE_TOGGLE = "toggle"
+AbilityState.SOURCE_SLOT_STACKS = "slot_stacks"
 AbilityState.SOURCE_UNIT_EFFECT = "unit_effect"
 AbilityState.SOURCE_ULTIMATE_RESOURCE = "ultimate_resource"
 AbilityState.SOURCE_PREDICTED = "predicted"
@@ -20,6 +22,7 @@ AbilityState.SOURCE_UNKNOWN = "unknown"
 AbilityState.activeEffects = AbilityState.activeEffects or {}
 AbilityState.predictions = AbilityState.predictions or {}
 AbilityState.effectsReadable = AbilityState.effectsReadable == true
+AbilityState.boundArmamentsStackCount = AbilityState.boundArmamentsStackCount
 
 -- Provider strategies are deliberately opt-in. A readable zero from ESO is
 -- only negative evidence for abilities registered as native slot timers; a
@@ -31,11 +34,12 @@ local function NativeSlotTimerProvider()
     }
 end
 
-local function PlayerEffectProvider(effectIds)
+local function CrystalFragmentsProcProvider(effectIds)
     return {
-        strategy = "player_effect",
+        strategy = "crystal_fragments_proc",
         source = AbilityState.SOURCE_UNIT_EFFECT,
         effectIds = effectIds,
+        allowNonPlayerSource = true,
     }
 end
 
@@ -43,6 +47,15 @@ local function ToggleProvider()
     return {
         strategy = "native_toggle",
         source = AbilityState.SOURCE_TOGGLE,
+    }
+end
+
+local function BoundArmamentsStackProvider()
+    return {
+        strategy = "slot_stack_count",
+        source = AbilityState.SOURCE_SLOT_STACKS,
+        playerEffectId = 203447,
+        minimumStacks = 4,
     }
 end
 
@@ -60,7 +73,9 @@ local PROVIDERS = {
     [117690] = NativeSlotTimerProvider(), -- Blighted Blastbones
     [185908] = NativeSlotTimerProvider(), -- Cruxweaver Armor
     [63302] = NativeSlotTimerProvider(), -- Proximity Detonation
-    [114716] = PlayerEffectProvider({ 46327 }), -- Crystal Fragments proc
+    [24165] = BoundArmamentsStackProvider(), -- Bound Armaments
+    [203447] = BoundArmamentsStackProvider(), -- Bound Armaments stack/effective variant
+    [114716] = CrystalFragmentsProcProvider({ 46327 }), -- Crystal Fragments charged cast proc
     [92163] = ToggleProvider(), -- Warden bear ultimate
     [217699] = ToggleProvider(), -- Banner Bearer
     [40382] = CastCycleProvider(20000, true), -- Barbed Trap
@@ -154,6 +169,90 @@ function AbilityState.RegisterProvider(abilityId, provider)
     return true
 end
 
+function AbilityState.IsSlotStackProvider(abilityId)
+    abilityId = AbilityState.NormalizeAbilityId(abilityId)
+    local provider = PROVIDERS[abilityId]
+    return provider and provider.source == AbilityState.SOURCE_SLOT_STACKS or false
+end
+
+function AbilityState.IsPredictionProvider(abilityId)
+    local provider = PROVIDERS[AbilityState.NormalizeAbilityId(abilityId)]
+    return provider and provider.source == AbilityState.SOURCE_PREDICTED or false
+end
+
+local function ScanBoundArmamentsPlayerStacks()
+    if type(GetNumBuffs) ~= "function" or type(GetUnitBuffInfo) ~= "function" then
+        return nil
+    end
+
+    local countOk, count = pcall(GetNumBuffs, "player")
+    if not countOk then
+        return nil
+    end
+    for index = 1, tonumber(count) or 0 do
+        local ok, _, _, endTime, _, stackCount, _, _, _, _, _, abilityId = pcall(
+            GetUnitBuffInfo,
+            "player",
+            index
+        )
+        if ok and tonumber(abilityId) == 203447 then
+            AbilityState.boundArmamentsExpiresAt = (tonumber(endTime) or 0) * 1000
+            return math.max(0, tonumber(stackCount) or 0)
+        end
+    end
+    AbilityState.boundArmamentsExpiresAt = nil
+    return 0
+end
+
+local function ReadBoundArmamentsPlayerStacks()
+    local cachedStacks = AbilityState.boundArmamentsStackCount
+    local now = GetNowMilliseconds()
+    if (AbilityState.boundArmamentsExpiresAt or 0) > 0
+        and now >= AbilityState.boundArmamentsExpiresAt then
+        cachedStacks = 0
+        AbilityState.boundArmamentsStackCount = 0
+    end
+    -- Zero is evidence too. Recover missing native events at most twice a
+    -- second, and only when a tracked slot actually needs the fallback.
+    if cachedStacks ~= nil and now < (AbilityState.boundArmamentsNextScan or 0) then
+        return math.max(0, tonumber(cachedStacks) or 0)
+    end
+
+    AbilityState.boundArmamentsNextScan = now + 500
+    local scannedStacks = ScanBoundArmamentsPlayerStacks()
+    if scannedStacks ~= nil then
+        AbilityState.boundArmamentsStackCount = scannedStacks
+        return scannedStacks
+    end
+    return cachedStacks ~= nil and math.max(0, tonumber(cachedStacks) or 0) or nil
+end
+
+local function ApplyProviderStackFallback(provider, samples)
+    if not provider or provider.playerEffectId == nil then
+        return
+    end
+    local needsFallback = false
+    for _, sample in ipairs(samples) do
+        if sample.stackReadable ~= true or sample.stacks <= 0 then
+            needsFallback = true
+            break
+        end
+    end
+    if not needsFallback then
+        return
+    end
+    local fallbackStacks = ReadBoundArmamentsPlayerStacks()
+    if fallbackStacks == nil then
+        return
+    end
+    for _, sample in ipairs(samples) do
+        if sample.stackReadable ~= true or sample.stacks <= 0 then
+            sample.stacks = fallbackStacks
+            sample.stackReadable = true
+        end
+    end
+end
+
 local function ReadSlotSample(entry)
     local sample = {
         hotbar = entry.hotbar,
@@ -186,6 +285,7 @@ local function ReadSlotSample(entry)
         local ok, value = pcall(GetActionSlotEffectStackCount, entry.slotIndex, entry.hotbarCategory)
         if ok then
             sample.stacks = tonumber(value) or 0
+            sample.stackReadable = true
         end
     end
     if type(IsSlotToggled) == "function" then
@@ -194,7 +294,8 @@ local function ReadSlotSample(entry)
             sample.toggled = value == true
         end
     end
-    if type(GetSlotCooldownInfo) == "function" then
+    if ADDON.IsDebugModeEnabled and ADDON.IsDebugModeEnabled()
+        and type(GetSlotCooldownInfo) == "function" then
         local ok, remaining, duration, isGlobal = pcall(GetSlotCooldownInfo, entry.slotIndex, entry.hotbarCategory)
         if ok then
             sample.cooldownRemainingMs = tonumber(remaining) or 0
@@ -224,15 +325,23 @@ local function IsEffectCurrent(effect)
     return endTime == 0 or endTime > GetNowSeconds()
 end
 
-local function FindActiveEffect(abilityId, provider)
-    local acceptedIds = { [abilityId] = true }
-    for _, effectId in ipairs(provider and provider.effectIds or {}) do
-        acceptedIds[AbilityState.NormalizeAbilityId(effectId)] = true
+local function IsAcceptedEffectId(effectAbilityId, abilityId, provider)
+    local normalizedEffectId = AbilityState.NormalizeAbilityId(effectAbilityId)
+    if provider and provider.effectIds then
+        for _, effectId in ipairs(provider.effectIds) do
+            if normalizedEffectId == AbilityState.NormalizeAbilityId(effectId) then
+                return true
+            end
+        end
+        return false
     end
+    return normalizedEffectId == abilityId
+end
 
+local function FindActiveEffect(abilityId, provider)
     for _, effect in pairs(AbilityState.activeEffects) do
-        if acceptedIds[AbilityState.NormalizeAbilityId(effect.abilityId)]
-            and effect.castByPlayer ~= false
+        if IsAcceptedEffectId(effect.abilityId, abilityId, provider)
+            and (effect.castByPlayer ~= false or (provider and provider.allowNonPlayerSource == true))
             and IsEffectCurrent(effect) then
             return effect
         end
@@ -322,6 +431,7 @@ function AbilityState.Resolve(abilityId, entries)
 
     local provider = PROVIDERS[abilityId]
     state.providerStrategy = provider and provider.strategy
+    local isCrystalFragmentsProvider = provider and provider.strategy == "crystal_fragments_proc"
     local capabilities = GetCapabilities(abilityId)
     local hasToggleSample = false
     for _, sample in ipairs(state.samples) do
@@ -371,6 +481,33 @@ function AbilityState.Resolve(abilityId, entries)
         return state
     end
 
+    if provider and provider.source == AbilityState.SOURCE_SLOT_STACKS then
+        ApplyProviderStackFallback(provider, state.samples)
+        local minimumStacks = math.max(1, tonumber(provider.minimumStacks) or 1)
+        local hasStackSample = false
+        for _, sample in ipairs(state.samples) do
+            if sample.stackReadable == true then
+                hasStackSample = true
+                state.stacks = sample.stacks
+                if sample.stacks >= minimumStacks then
+                    MarkCapability(abilityId, "slotStacks")
+                    state.active = true
+                    state.phase = AbilityState.PHASE_ACTIVE_STACKED
+                    state.source = AbilityState.SOURCE_SLOT_STACKS
+                    state.confidence = "observed"
+                    return state
+                end
+            end
+        end
+        if hasStackSample then
+            state.active = false
+            state.phase = AbilityState.PHASE_INACTIVE
+            state.source = AbilityState.SOURCE_SLOT_STACKS
+            state.confidence = "observed"
+        end
+        return state
+    end
+
     if isUltimate then
         local hasResourceSample = false
         for _, entry in ipairs(entries) do
@@ -402,7 +539,10 @@ function AbilityState.Resolve(abilityId, entries)
     local hasTimerReader = false
     for _, sample in ipairs(state.samples) do
         hasTimerReader = hasTimerReader or sample.timerReadable == true
-        if sample.remainingMs > 0 then
+        -- Crystal Fragments' short native timer is the separate cost-reduction
+        -- effect from the tooltip, not the charged instant-cast proc. Only its
+        -- explicit player effect (46327) may mark the tracker active.
+        if sample.remainingMs > 0 and not isCrystalFragmentsProvider then
             MarkCapability(abilityId, "slotTimer")
             state.active = true
             state.timing = true
@@ -435,7 +575,10 @@ function AbilityState.Resolve(abilityId, entries)
     end
 
     if hasTimerReader
-        and (capabilities.slotTimer == true or (provider and provider.source == AbilityState.SOURCE_SLOT_TIMER)) then
+        and (
+            capabilities.slotTimer == true
+            or (provider and provider.source == AbilityState.SOURCE_SLOT_TIMER)
+        ) then
         state.active = false
         state.phase = AbilityState.PHASE_INACTIVE
         state.source = AbilityState.SOURCE_SLOT_TIMER
@@ -489,13 +632,61 @@ function AbilityState.ExpirePredictions()
     return changed
 end
 
+function AbilityState.SetTrackedAbilities(abilities)
+    local effects = {}
+    for abilityId in pairs(abilities) do
+        local provider = PROVIDERS[abilityId]
+        if provider and provider.effectIds then
+            for _, effectId in ipairs(provider.effectIds) do
+                effects[AbilityState.NormalizeAbilityId(effectId)] = true
+            end
+        else
+            effects[abilityId] = true
+        end
+        if provider and provider.playerEffectId then
+            effects[provider.playerEffectId] = true
+        end
+    end
+    AbilityState.trackedEffects = effects
+    for abilityId in pairs(AbilityState.predictions) do
+        if not abilities[abilityId] then
+            AbilityState.predictions[abilityId] = nil
+        end
+    end
+    AbilityState.activeEffects = {}
+    AbilityState.boundArmamentsStackCount = nil
+    AbilityState.boundArmamentsNextScan = nil
+    AbilityState.boundArmamentsExpiresAt = nil
+    AbilityState.effectsReadable = false
+    if next(abilities) then
+        AbilityState.RebuildPlayerEffects()
+    end
+end
+
+function AbilityState.IsRelevantEffect(abilityId)
+    return AbilityState.trackedEffects
+        and AbilityState.trackedEffects[AbilityState.NormalizeAbilityId(abilityId)] == true
+end
+
 function AbilityState.HandleEffectChanged(changeType, effectSlot, beginTime, endTime, stackCount, abilityId, sourceType)
+    if not AbilityState.IsRelevantEffect(abilityId) then
+        local removed = AbilityState.activeEffects[effectSlot] ~= nil
+        AbilityState.activeEffects[effectSlot] = nil
+        return removed
+    end
     AbilityState.effectsReadable = true
+    abilityId = tonumber(abilityId) or 0
+    if abilityId == 203447 then
+        AbilityState.boundArmamentsStackCount = changeType == EFFECT_RESULT_FADED
+            and 0
+            or math.max(0, tonumber(stackCount) or 0)
+        AbilityState.boundArmamentsNextScan = GetNowMilliseconds() + 500
+        AbilityState.boundArmamentsExpiresAt = (tonumber(endTime) or 0) * 1000
+    end
     if changeType == EFFECT_RESULT_FADED then
         AbilityState.activeEffects[effectSlot] = nil
-        return
+        return true
     end
-    abilityId = tonumber(abilityId) or 0
     if abilityId == 0 then
         return
     end
@@ -503,18 +694,22 @@ function AbilityState.HandleEffectChanged(changeType, effectSlot, beginTime, end
     if COMBAT_UNIT_TYPE_PLAYER ~= nil then
         castByPlayer = sourceType == COMBAT_UNIT_TYPE_PLAYER
     end
-    AbilityState.activeEffects[effectSlot] = {
-        abilityId = abilityId,
-        beginTime = tonumber(beginTime) or 0,
-        endTime = tonumber(endTime) or 0,
-        stackCount = tonumber(stackCount) or 0,
-        castByPlayer = castByPlayer,
-    }
+    local effect = AbilityState.activeEffects[effectSlot] or {}
+    effect.abilityId = abilityId
+    effect.beginTime = tonumber(beginTime) or 0
+    effect.endTime = tonumber(endTime) or 0
+    effect.stackCount = tonumber(stackCount) or 0
+    effect.castByPlayer = castByPlayer
+    AbilityState.activeEffects[effectSlot] = effect
+    return true
 end
 
 function AbilityState.RebuildPlayerEffects()
     AbilityState.activeEffects = {}
     AbilityState.effectsReadable = false
+    if not AbilityState.trackedEffects or not next(AbilityState.trackedEffects) then
+        return false
+    end
     if type(GetNumBuffs) ~= "function" or type(GetUnitBuffInfo) ~= "function" then
         return false
     end
@@ -523,6 +718,7 @@ function AbilityState.RebuildPlayerEffects()
     if not countOk then
         return false
     end
+    local boundArmamentsStacks = 0
     for index = 1, tonumber(count) or 0 do
         local ok, _, beginTime, endTime, effectSlot, stackCount, _, _, _, _, _, abilityId, _, castByPlayer = pcall(
             GetUnitBuffInfo,
@@ -530,7 +726,11 @@ function AbilityState.RebuildPlayerEffects()
             index
         )
         abilityId = tonumber(abilityId) or 0
-        if ok and abilityId ~= 0 then
+        if ok and AbilityState.IsRelevantEffect(abilityId) then
+            if abilityId == 203447 then
+                boundArmamentsStacks = math.max(0, tonumber(stackCount) or 0)
+                AbilityState.boundArmamentsExpiresAt = (tonumber(endTime) or 0) * 1000
+            end
             AbilityState.activeEffects[effectSlot or index] = {
                 abilityId = abilityId,
                 beginTime = tonumber(beginTime) or 0,
@@ -540,6 +740,8 @@ function AbilityState.RebuildPlayerEffects()
             }
         end
     end
+    AbilityState.boundArmamentsStackCount = boundArmamentsStacks
+    AbilityState.boundArmamentsNextScan = GetNowMilliseconds() + 500
     AbilityState.effectsReadable = true
     return true
 end
@@ -608,5 +810,5 @@ function AbilityState.DebugSnapshot()
 end
 
 function AbilityState.Init()
-    AbilityState.RebuildPlayerEffects()
+    -- ActionBars selects enabled, slotted consumers before any effect scan.
 end

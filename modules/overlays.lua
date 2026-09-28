@@ -4,12 +4,16 @@ EZOCombat.Overlays = EZOCombat.Overlays or {}
 local ADDON = EZOCombat
 local Overlays = ADDON.Overlays
 local WM = WINDOW_MANAGER
-local KEYBIND_HEIGHT = 20
+local KEYBIND_HEIGHT = 34
+local KEYBIND_WIDTH = 112
+local KEYBIND_SCALE_PERCENT = 120
 local CLOSE_SIZE = 16
 
 Overlays.DEFAULT_ICON_SIZE = 54
 Overlays.MIN_ICON_SIZE = 32
 Overlays.MAX_ICON_SIZE = 128
+Overlays.KEYBIND_HEIGHT = KEYBIND_HEIGHT
+Overlays.KEYBIND_WIDTH = KEYBIND_WIDTH
 
 local function IsHudScene()
     return SCENE_MANAGER
@@ -26,6 +30,47 @@ local function NormalizeIconSize(value)
     return math.max(Overlays.MIN_ICON_SIZE, math.min(Overlays.MAX_ICON_SIZE, value))
 end
 
+local function SetHiddenIfChanged(control, hidden)
+    hidden = hidden == true
+    if control and control:IsHidden() ~= hidden then
+        control:SetHidden(hidden)
+    end
+end
+
+local function SetTextIfChanged(label, text)
+    text = text or ""
+    if label and label.ezoCombatText ~= text then
+        label.ezoCombatText = text
+        label:SetText(text)
+    end
+end
+
+local function SetTextureIfChanged(texture, path)
+    path = path or ""
+    if texture and texture.ezoCombatTexture ~= path then
+        texture.ezoCombatTexture = path
+        texture:SetTexture(path)
+    end
+end
+
+local function SetMovableIfChanged(control, movable)
+    if control.ezoCombatMovable ~= movable then
+        control.ezoCombatMovable = movable
+        control:SetMovable(movable)
+    end
+end
+
+local function SetDimensionsIfChanged(control, width, height)
+    if not control then
+        return
+    end
+    if control.ezoCombatWidth ~= width or control.ezoCombatHeight ~= height then
+        control.ezoCombatWidth = width
+        control.ezoCombatHeight = height
+        control:SetDimensions(width, height)
+    end
+end
+
 function Overlays.GetIconSize()
     local general = ADDON.sv and ADDON.sv.general
     return NormalizeIconSize(general and general.iconSize)
@@ -40,32 +85,22 @@ function Overlays.SetIconSize(value)
     return true
 end
 
-local function GetAbilityDetails(abilityId)
-    local name = tostring(abilityId or "")
-    local icon = ""
-    if type(GetAbilityName) == "function" then
-        local ok, value = pcall(GetAbilityName, abilityId)
-        if ok and value and value ~= "" then
-            name = zo_strformat("<<C:1>>", value)
-        end
-    end
-    if type(GetAbilityIcon) == "function" then
-        local ok, value = pcall(GetAbilityIcon, abilityId)
-        if ok and value then
-            icon = value
-        end
-    end
-    return name, icon
-end
-
 local function ApplyManualPosition(control, tracker, index)
     -- Refreshes can arrive while ESO is moving the control. Re-anchoring a
     -- moving TopLevelWindow here makes the cursor-to-icon offset jump.
     if control.ezoCombatMoving == true then
         return
     end
-    control:ClearAnchors()
     if tracker.x and tracker.y then
+        if control.ezoCombatAnchorMode == "manual-saved"
+            and control.ezoCombatAnchorX == tracker.x
+            and control.ezoCombatAnchorY == tracker.y then
+            return
+        end
+        control.ezoCombatAnchorMode = "manual-saved"
+        control.ezoCombatAnchorX = tracker.x
+        control.ezoCombatAnchorY = tracker.y
+        control:ClearAnchors()
         control:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, tracker.x, tracker.y)
         return
     end
@@ -73,7 +108,18 @@ local function ApplyManualPosition(control, tracker, index)
     local iconSize = Overlays.GetIconSize()
     local column = (index - 1) % 4
     local row = math.floor((index - 1) / 4)
-    control:SetAnchor(CENTER, GuiRoot, CENTER, 140 + column * (iconSize + 34), -90 + row * (iconSize + 30))
+    local x = 140 + column * (iconSize + 34)
+    local y = -90 + row * (iconSize + 30)
+    if control.ezoCombatAnchorMode == "manual-default"
+        and control.ezoCombatAnchorX == x
+        and control.ezoCombatAnchorY == y then
+        return
+    end
+    control.ezoCombatAnchorMode = "manual-default"
+    control.ezoCombatAnchorX = x
+    control.ezoCombatAnchorY = y
+    control:ClearAnchors()
+    control:SetAnchor(CENTER, GuiRoot, CENTER, x, y)
 end
 
 local function ApplyAutomaticContainer(layoutResult)
@@ -81,19 +127,29 @@ local function ApplyAutomaticContainer(layoutResult)
     if not container then
         return
     end
-    container:SetHidden(false)
+    SetHiddenIfChanged(container, false)
     if container.ezoCombatMoving == true then
         return
     end
-    container:SetDimensions(layoutResult.width, layoutResult.height)
+    SetDimensionsIfChanged(container, layoutResult.width, layoutResult.height)
     local anchorX, anchorY = ADDON.Layout.GetAnchor(ADDON.Layout.GetMode())
+    local pixelX = anchorX * GuiRoot:GetWidth()
+    local pixelY = anchorY * GuiRoot:GetHeight()
+    if container.ezoCombatAnchorMode == "automatic"
+        and container.ezoCombatAnchorX == pixelX
+        and container.ezoCombatAnchorY == pixelY then
+        return
+    end
+    container.ezoCombatAnchorMode = "automatic"
+    container.ezoCombatAnchorX = pixelX
+    container.ezoCombatAnchorY = pixelY
     container:ClearAnchors()
     container:SetAnchor(
         CENTER,
         GuiRoot,
         TOPLEFT,
-        anchorX * GuiRoot:GetWidth(),
-        anchorY * GuiRoot:GetHeight()
+        pixelX,
+        pixelY
     )
 end
 
@@ -103,11 +159,20 @@ local function ApplyAutomaticPosition(control, position)
     end
     if control:GetParent() ~= Overlays.autoContainer then
         control:SetParent(Overlays.autoContainer)
+        control.ezoCombatAnchorMode = nil
     end
-    control:SetMovable(false)
+    SetMovableIfChanged(control, false)
     if Overlays.autoContainer.ezoCombatMoving == true then
         return
     end
+    if control.ezoCombatAnchorMode == "automatic"
+        and control.ezoCombatAnchorX == position.x
+        and control.ezoCombatAnchorY == position.y then
+        return
+    end
+    control.ezoCombatAnchorMode = "automatic"
+    control.ezoCombatAnchorX = position.x
+    control.ezoCombatAnchorY = position.y
     control:ClearAnchors()
     control:SetAnchor(TOPLEFT, Overlays.autoContainer, TOPLEFT, position.x, position.y)
 end
@@ -115,8 +180,9 @@ end
 local function PrepareManualControl(control)
     if control:GetParent() ~= Overlays.root then
         control:SetParent(Overlays.root)
+        control.ezoCombatAnchorMode = nil
     end
-    control:SetMovable(true)
+    SetMovableIfChanged(control, true)
 end
 
 local function HideTooltip(control)
@@ -126,6 +192,10 @@ local function HideTooltip(control)
 end
 
 local function ClearBinding(control)
+    if not control.bindingAction and control.binding
+        and control.binding.ezoCombatText == "" then
+        return
+    end
     if control.bindingAction
         and control.binding
         and type(ZO_Keybindings_UnregisterLabelForBindingUpdate) == "function" then
@@ -133,8 +203,9 @@ local function ClearBinding(control)
     end
     control.bindingAction = nil
     if control.binding then
-        control.binding:SetText("")
-        control.binding:SetHidden(true)
+        control.binding.ezoCombatText = nil
+        SetTextIfChanged(control.binding, "")
+        SetHiddenIfChanged(control.binding, true)
     end
 end
 
@@ -176,19 +247,53 @@ local function UpdateBinding(control, tracker)
         false,
         gamepadActionName,
         function(label, bindingText)
-            label:SetHidden(not bindingText or bindingText == "")
+            SetHiddenIfChanged(label, not bindingText or bindingText == "")
         end,
         false,
         false,
-        80
+        KEYBIND_SCALE_PERCENT
     )
+end
+
+local function UpdateStackCount(control, tracker)
+    local hasStackProvider = ADDON.AbilityState
+        and type(ADDON.AbilityState.IsSlotStackProvider) == "function"
+        and ADDON.AbilityState.IsSlotStackProvider(tracker.abilityId)
+    if not hasStackProvider then
+        SetTextIfChanged(control.stacks, "")
+        SetHiddenIfChanged(control.stacks, true)
+        return
+    end
+
+    local state
+    if ADDON.ActionBars and type(ADDON.ActionBars.GetAbilityState) == "function" then
+        state = ADDON.ActionBars.GetAbilityState(tracker.abilityId)
+    end
+    local stackCount = state and tonumber(state.stacks) or 0
+    local text = stackCount > 0 and tostring(stackCount) or ""
+    SetTextIfChanged(control.stacks, text)
+    SetHiddenIfChanged(control.stacks, text == "")
 end
 
 local function ApplySize(control)
     local iconSize = Overlays.GetIconSize()
-    control:SetDimensions(iconSize, iconSize + KEYBIND_HEIGHT)
-    control.background:SetDimensions(iconSize, iconSize)
-    control.binding:SetDimensions(math.max(80, iconSize), KEYBIND_HEIGHT)
+    if control.ezoCombatIconSize == iconSize then
+        return
+    end
+    control.ezoCombatIconSize = iconSize
+    SetDimensionsIfChanged(control, iconSize, iconSize + KEYBIND_HEIGHT)
+    SetDimensionsIfChanged(control.background, iconSize, iconSize)
+    SetDimensionsIfChanged(
+        control.stacks,
+        math.max(16, iconSize - 8),
+        math.max(14, math.floor(iconSize * 0.62))
+    )
+    control.stacks:SetFont(
+        iconSize >= 58 and "ZoFontWinH3"
+            or iconSize >= 36 and "ZoFontWinH4"
+            or "ZoFontGameLargeBold"
+    )
+    SetDimensionsIfChanged(control.binding, math.max(KEYBIND_WIDTH, iconSize), KEYBIND_HEIGHT)
 end
 
 local function CreateControl(tracker)
@@ -222,10 +327,22 @@ local function CreateControl(tracker)
     priority:SetColor(1, 1, 1, 1)
     control.priority = priority
 
+    local stacks = WM:CreateControl(nil, control, CT_LABEL)
+    stacks:SetMouseEnabled(false)
+    stacks:SetDimensions(math.max(16, iconSize - 8), math.max(14, math.floor(iconSize * 0.62)))
+    stacks:SetAnchor(BOTTOMRIGHT, background, BOTTOMRIGHT, -3, -2)
+    stacks:SetFont("ZoFontGameLargeBold")
+    stacks:SetColor(0.95, 0.72, 0.22, 1)
+    stacks:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
+    stacks:SetVerticalAlignment(TEXT_ALIGN_BOTTOM)
+    stacks:SetDrawLayer(DL_OVERLAY)
+    stacks:SetHidden(true)
+    control.stacks = stacks
+
     local binding = WM:CreateControl(nil, control, CT_LABEL)
     binding:SetAnchor(TOP, background, BOTTOM, 0, 1)
-    binding:SetDimensions(math.max(80, iconSize), KEYBIND_HEIGHT)
-    binding:SetFont("ZoFontGameSmall")
+    binding:SetDimensions(math.max(KEYBIND_WIDTH, iconSize), KEYBIND_HEIGHT)
+    binding:SetFont("ZoFontGameBold")
     binding:SetColor(1, 1, 1, 1)
     binding:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
     binding:SetVerticalAlignment(TEXT_ALIGN_CENTER)
@@ -289,7 +406,8 @@ local function CreateControl(tracker)
         end
     end)
     control:SetHandler("OnMouseEnter", function(controlRef)
-        local name = GetAbilityDetails(tracker.abilityId)
+        local entry = ADDON.ActionBars.GetEntryForAbility(tracker.abilityId)
+        local name = entry and entry.name or tostring(tracker.abilityId)
         if type(ZO_Tooltips_ShowTextTooltip) == "function" then
             ZO_Tooltips_ShowTextTooltip(controlRef, TOP, name)
         end
@@ -336,13 +454,20 @@ function Overlays.Create()
 end
 
 function Overlays.Refresh()
+    if ADDON.ActionBars and ADDON.ActionBars.SyncTracking then
+        ADDON.ActionBars.SyncTracking()
+    end
     Overlays.Create()
     if not IsHudScene() then
-        Overlays.root:SetHidden(true)
+        SetHiddenIfChanged(Overlays.root, true)
         return
     end
 
-    local active = {}
+    local active = Overlays.activeControls or {}
+    for id in pairs(active) do
+        active[id] = nil
+    end
+    Overlays.activeControls = active
     local showAllConfigured = (ADDON.Window
         and type(ADDON.Window.IsShowingAllConfigured) == "function"
         and ADDON.Window.IsShowingAllConfigured())
@@ -360,17 +485,17 @@ function Overlays.Refresh()
     for id, control in pairs(Overlays.controls) do
         if not active[id] then
             ClearBinding(control)
-            control:SetHidden(true)
+            SetHiddenIfChanged(control, true)
         end
     end
 
     local automatic = ADDON.Layout and ADDON.Layout.IsAutomatic()
     local layoutResult
-    if automatic then
+    if automatic and #visible > 0 then
         layoutResult = ADDON.Layout.Calculate(Overlays.GetIconSize(), KEYBIND_HEIGHT)
         ApplyAutomaticContainer(layoutResult)
     elseif Overlays.autoContainer then
-        Overlays.autoContainer:SetHidden(true)
+        SetHiddenIfChanged(Overlays.autoContainer, true)
     end
 
     local index = 0
@@ -381,12 +506,11 @@ function Overlays.Refresh()
             control = CreateControl(tracker)
             Overlays.controls[tracker.id] = control
         end
-        local _, icon = GetAbilityDetails(tracker.abilityId)
-        control.texture:SetTexture(icon)
-        control.priority:SetText(
-            tracker.priority == ADDON.Priority.ALWAYS and "" or "P" .. tostring(tracker.priority)
-        )
+        local entry = ADDON.ActionBars.GetEntryForAbility(tracker.abilityId)
+        SetTextureIfChanged(control.texture, entry and entry.icon or "")
+        SetTextIfChanged(control.priority, tracker.priority == ADDON.Priority.ALWAYS and "" or "P" .. tostring(tracker.priority))
         UpdateBinding(control, tracker)
+        UpdateStackCount(control, tracker)
         ApplySize(control)
         if automatic then
             ApplyAutomaticPosition(control, layoutResult.positions[tracker.id])
@@ -394,13 +518,13 @@ function Overlays.Refresh()
             PrepareManualControl(control)
             ApplyManualPosition(control, tracker, index)
         end
-        control:SetHidden(false)
+        SetHiddenIfChanged(control, false)
     end
 
     if automatic and Overlays.autoContainer then
-        Overlays.autoContainer:SetHidden(index == 0)
+        SetHiddenIfChanged(Overlays.autoContainer, index == 0)
     end
-    Overlays.root:SetHidden(index == 0)
+    SetHiddenIfChanged(Overlays.root, index == 0)
 end
 
 function Overlays.Init()

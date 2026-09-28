@@ -26,6 +26,34 @@ local function IsHudScene()
             and ADDON.Context.IsHudOverlayBlocked())
 end
 
+local function IsGamepadPreferred()
+    return type(IsInGamepadPreferredMode) == "function" and IsInGamepadPreferredMode() == true
+end
+
+local function RequestMouseUIMode()
+    if IsGamepadPreferred()
+        or not IsHudScene()
+        or not (SCENE_MANAGER and type(SCENE_MANAGER.SetInUIMode) == "function") then
+        return false
+    end
+    if SCENE_MANAGER:IsShowing("hudui") then
+        return false
+    end
+    local ok = pcall(function()
+        SCENE_MANAGER:SetInUIMode(true, false)
+    end)
+    return ok == true
+end
+
+local function ReleaseMouseUIMode()
+    if Window.enteredUIMode
+        and SCENE_MANAGER
+        and type(SCENE_MANAGER.SetInUIMode) == "function" then
+        SCENE_MANAGER:SetInUIMode(false, false)
+    end
+    Window.enteredUIMode = false
+end
+
 local function SavedWindow()
     local sv = ADDON.sv
     if not sv then
@@ -237,7 +265,11 @@ function Window.RefreshVisibility()
     if not Window.control then
         return
     end
-    Window.control:SetHidden(not (Window.requestedVisible == true and IsHudScene()))
+    local visible = Window.requestedVisible == true and IsHudScene()
+    Window.control:SetHidden(not visible)
+    if not visible then
+        ReleaseMouseUIMode()
+    end
 end
 
 function Window.RefreshContext()
@@ -421,7 +453,7 @@ function Window.CycleSelectedPriority()
 end
 
 function Window.RefreshBars()
-    if not Window.bars then
+    if not Window.bars or not Window.requestedVisible then
         return
     end
     local bars = ADDON.ActionBars and ADDON.ActionBars.bars or {}
@@ -566,15 +598,14 @@ function Window.Show()
         Window.RefreshBars()
     end
     Window.RefreshVisibility()
-    if IsHudScene() and SCENE_MANAGER and type(SCENE_MANAGER.SetInUIMode) == "function" then
-        SCENE_MANAGER:SetInUIMode(true, false)
-    end
+    Window.enteredUIMode = RequestMouseUIMode()
 end
 
 function Window.Hide()
     Window.SetShowAllConfigured(false)
     Window.requestedVisible = false
     Window.RefreshVisibility()
+    ReleaseMouseUIMode()
 end
 
 function Window.Toggle()
@@ -589,6 +620,13 @@ function Window.Init()
     Window.Create()
     if SCENE_MANAGER and type(SCENE_MANAGER.RegisterCallback) == "function" then
         SCENE_MANAGER:RegisterCallback("SceneStateChanged", Window.RefreshVisibility)
+    end
+    if EVENT_MANAGER and EVENT_GAMEPAD_PREFERRED_MODE_CHANGED then
+        EVENT_MANAGER:RegisterForEvent(ADDON.name .. "WindowGamepadMode", EVENT_GAMEPAD_PREFERRED_MODE_CHANGED, function()
+            if IsGamepadPreferred() then
+                ReleaseMouseUIMode()
+            end
+        end)
     end
 end
 

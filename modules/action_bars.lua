@@ -6,6 +6,15 @@ local ActionBars = ADDON.ActionBars
 
 ActionBars.activityStates = ActionBars.activityStates or {}
 
+local BAR_REFRESH_UPDATE_NAME = ADDON.name .. "BarsRefresh"
+local EMPTY_ENTRIES = {}
+local RegisterStateEvents
+local StopStateEvents
+
+local function NormalizeAbilityId(abilityId)
+    return ADDON.AbilityState.NormalizeAbilityId(abilityId)
+end
+
 local function DebugLog(message)
     if ADDON.DebugLog then
         ADDON.DebugLog("[ActionBars] " .. tostring(message))
@@ -79,21 +88,11 @@ local function GetAbilityDetails(abilityId)
 end
 
 local function GetEntriesForAbility(abilityId)
-    local matches = {}
-    for _, entries in pairs(ActionBars.bars or {}) do
-        for _, entry in ipairs(entries) do
-            local equivalent = entry.abilityId == abilityId
-            if not equivalent
-                and ADDON.AbilityState
-                and type(ADDON.AbilityState.AreAbilityIdsEquivalent) == "function" then
-                equivalent = ADDON.AbilityState.AreAbilityIdsEquivalent(entry.abilityId, abilityId)
-            end
-            if equivalent then
-                matches[#matches + 1] = entry
-            end
-        end
-    end
-    return matches
+    return ActionBars.entriesByAbility and ActionBars.entriesByAbility[NormalizeAbilityId(abilityId)] or EMPTY_ENTRIES
+end
+
+local function HasEntryForAbility(abilityId)
+    return #GetEntriesForAbility(abilityId) > 0
 end
 
 local function ActivityStateKey(state)
@@ -106,13 +105,20 @@ local function ActivityStateKey(state)
     return "unknown"
 end
 
-local function RefreshOverlays(source)
+local function RefreshOverlaysNow(source)
+    ActionBars.pendingOverlayRefreshSource = nil
     if ADDON.IsDebugModeEnabled and ADDON.IsDebugModeEnabled() then
         DebugLog("evidence refresh source=" .. tostring(source or "unknown"))
     end
     if ADDON.Overlays and type(ADDON.Overlays.Refresh) == "function" then
         ADDON.Overlays.Refresh()
     end
+end
+
+local function RequestOverlayRefresh(source)
+    -- Native evidence is read once on the next state tick. Rendering occurs
+    -- only if activity or stacks changed, not once for every incoming event.
+    ActionBars.pendingOverlayRefreshSource = source
 end
 
 local function BuildBarsSignature(bars)
@@ -128,21 +134,16 @@ local function BuildBarsSignature(bars)
 end
 
 local function PollActivityTransitions()
-    if not (ADDON.Priority and type(ADDON.Priority.ListTrackers) == "function") then
-        return
-    end
-
-    local seen = {}
     local changed = false
-    for _, tracker in ipairs(ADDON.Priority.ListTrackers()) do
-        local abilityId = tonumber(tracker.abilityId) or 0
-        if tracker.enabled == true and tracker.condition ~= ADDON.Priority.CONDITION_SLOTTED and abilityId ~= 0 then
-            local state = ActionBars.GetAbilityState(abilityId)
-            local stateKey = ActivityStateKey(state)
-            seen[abilityId] = true
-            if ActionBars.activityStates[abilityId] ~= stateKey then
-                ActionBars.activityStates[abilityId] = stateKey
-                changed = true
+    for abilityId in pairs(ActionBars.trackedAbilities) do
+        local state = ActionBars.GetAbilityState(abilityId)
+        local stateKey = ActivityStateKey(state)
+        if ActionBars.activityStates[abilityId] ~= stateKey
+            or ActionBars.activityStacks[abilityId] ~= state.stacks then
+            ActionBars.activityStates[abilityId] = stateKey
+            ActionBars.activityStacks[abilityId] = state.stacks
+            changed = true
+            if ADDON.IsDebugModeEnabled and ADDON.IsDebugModeEnabled() then
                 DebugLog(string.format(
                     "activity transition ability=%s state=%s source=%s phase=%s confidence=%s",
                     tostring(abilityId),
@@ -154,15 +155,90 @@ local function PollActivityTransitions()
             end
         end
     end
+    return changed
+end
 
-    for abilityId in pairs(ActionBars.activityStates) do
-        if not seen[abilityId] then
-            ActionBars.activityStates[abilityId] = nil
+function ActionBars.InvalidateStates()
+    local cache = ActionBars.stateCache or {}
+    for id in pairs(cache) do
+        cache[id] = nil
+    end
+    ActionBars.stateCache = cache
+end
+
+local function OnStateTick()
+    ActionBars.InvalidateStates()
+    ADDON.AbilityState.ExpirePredictions()
+    local changed = PollActivityTransitions()
+    if changed then
+        RefreshOverlaysNow(ActionBars.pendingOverlayRefreshSource or "activity-transition")
+    else
+        ActionBars.pendingOverlayRefreshSource = nil
+    end
+end
+
+function ActionBars.SyncTracking()
+    local trackers = ADDON.Priority.ListTrackers()
+    local enabled = ADDON.sv and ADDON.sv.general and ADDON.sv.general.enabled == true
+    if ActionBars.planTrackers == trackers and ActionBars.planBars == ActionBars.bars
+        and ActionBars.planEnabled == enabled then
+        return
+    end
+    ActionBars.planTrackers, ActionBars.planBars, ActionBars.planEnabled = trackers, ActionBars.bars, enabled
+    local tracked = {}
+    local previousUltimate, previousPredictions = ActionBars.trackUltimate, ActionBars.trackPredictions
+    ActionBars.trackUltimate, ActionBars.trackPredictions = false, false
+    if enabled then
+        for _, tracker in ipairs(trackers) do
+            if tracker.enabled and HasEntryForAbility(tracker.abilityId)
+                and (tracker.condition ~= ADDON.Priority.CONDITION_SLOTTED
+                    or ADDON.AbilityState.IsSlotStackProvider(tracker.abilityId)) then
+                tracked[NormalizeAbilityId(tracker.abilityId)] = true
+                ActionBars.trackPredictions = ActionBars.trackPredictions
+                    or ADDON.AbilityState.IsPredictionProvider(tracker.abilityId)
+                for _, entry in ipairs(GetEntriesForAbility(tracker.abilityId)) do
+                    ActionBars.trackUltimate = ActionBars.trackUltimate or entry.isUltimate
+                end
+            end
         end
     end
-
-    if changed then
-        RefreshOverlays("activity-transition")
+    local previous = ActionBars.trackedAbilities
+    local selectionChanged = previous == nil
+    if previous then
+        for id in pairs(previous) do
+            if not tracked[id] then selectionChanged = true; break end
+        end
+        for id in pairs(tracked) do
+            if not previous[id] then selectionChanged = true; break end
+        end
+    end
+    -- Slot moves, equivalent effective IDs and priority edits do not require
+    -- rescanning buffs or disconnecting the same native event subscriptions.
+    if not selectionChanged and previousUltimate == ActionBars.trackUltimate
+        and previousPredictions == ActionBars.trackPredictions then
+        return
+    end
+    ActionBars.trackedAbilities = tracked
+    ActionBars.activityStates, ActionBars.activityStacks = {}, {}
+    ActionBars.InvalidateStates()
+    local active = next(tracked) ~= nil
+    if ActionBars.trackingActive then
+        StopStateEvents()
+    end
+    if active then
+        RegisterStateEvents()
+    end
+    if active ~= (ActionBars.trackingActive == true) then
+        ActionBars.trackingActive = active
+        if active then
+            EVENT_MANAGER:RegisterForUpdate(ADDON.name .. "AbilityStates", 100, OnStateTick)
+        else
+            StopStateEvents()
+            EVENT_MANAGER:UnregisterForUpdate(ADDON.name .. "AbilityStates")
+        end
+    end
+    if selectionChanged then
+        ADDON.AbilityState.SetTrackedAbilities(tracked)
     end
 end
 
@@ -186,16 +262,22 @@ function ActionBars.Capture()
         local entries = {}
         for slotIndex = firstSlot, lastSlot do
             local abilityId = ResolveAbilityId(slotIndex, bar.category)
-            local name, icon = GetAbilityDetails(abilityId)
-            entries[#entries + 1] = {
-                abilityId = abilityId,
-                name = name,
-                icon = icon,
-                hotbar = bar.key,
-                hotbarCategory = bar.category,
-                slotIndex = slotIndex,
-                isUltimate = slotIndex == lastSlot,
-            }
+            local previous = ActionBars.bars and ActionBars.bars[bar.key]
+                and ActionBars.bars[bar.key][slotIndex - firstSlot + 1]
+            if previous and previous.abilityId == abilityId then
+                entries[#entries + 1] = previous
+            else
+                local name, icon = GetAbilityDetails(abilityId)
+                entries[#entries + 1] = {
+                    abilityId = abilityId,
+                    name = name,
+                    icon = icon,
+                    hotbar = bar.key,
+                    hotbarCategory = bar.category,
+                    slotIndex = slotIndex,
+                    isUltimate = slotIndex == lastSlot,
+                }
+            end
         end
         bars[bar.key] = entries
     end
@@ -203,11 +285,31 @@ function ActionBars.Capture()
 end
 
 function ActionBars.Refresh(source)
+    EVENT_MANAGER:UnregisterForUpdate(BAR_REFRESH_UPDATE_NAME)
+    ActionBars.barsRefreshPending = false
     local bars = ActionBars.Capture()
     local signature = BuildBarsSignature(bars)
     local barsChanged = ActionBars.barsSignature ~= signature
-    ActionBars.bars = bars
+    if barsChanged or not ActionBars.bars then
+        ActionBars.bars = bars
+        local index = {}
+        for _, entries in pairs(bars) do
+            for _, entry in ipairs(entries) do
+                local id = NormalizeAbilityId(entry.abilityId)
+                if id ~= 0 then
+                    index[id] = index[id] or {}
+                    index[id][#index[id] + 1] = entry
+                end
+            end
+        end
+        ActionBars.entriesByAbility = index
+    end
     ActionBars.barsSignature = signature
+    ActionBars.InvalidateStates()
+    ActionBars.SyncTracking()
+    if source == "player-activated" and ActionBars.trackingActive then
+        ADDON.AbilityState.RebuildPlayerEffects()
+    end
     if ADDON.IsDebugModeEnabled and ADDON.IsDebugModeEnabled() then
         local parts = {}
         for key, entries in pairs(ActionBars.bars) do
@@ -219,7 +321,8 @@ function ActionBars.Refresh(source)
         end
         DebugLog(string.format("refresh source=%s %s", tostring(source or "manual"), table.concat(parts, " ")))
     end
-    if ADDON.Window and type(ADDON.Window.RefreshBars) == "function" then
+    if (barsChanged or source == "window-show")
+        and ADDON.Window and type(ADDON.Window.RefreshBars) == "function" then
         ADDON.Window.RefreshBars()
     end
     if barsChanged
@@ -227,7 +330,18 @@ function ActionBars.Refresh(source)
         and type(ADDON.Settings.RequestSettingsRefresh) == "function" then
         ADDON.Settings.RequestSettingsRefresh(true)
     end
-    RefreshOverlays(source or "bar-refresh")
+    RefreshOverlaysNow(source or "bar-refresh")
+end
+
+local function FlushBarsRefresh()
+    ActionBars.Refresh("coalesced-bars")
+end
+
+local function QueueBarsRefresh()
+    if not ActionBars.barsRefreshPending then
+        ActionBars.barsRefreshPending = true
+        EVENT_MANAGER:RegisterForUpdate(BAR_REFRESH_UPDATE_NAME, 1, FlushBarsRefresh)
+    end
 end
 
 function ActionBars.DebugSnapshot()
@@ -244,7 +358,7 @@ end
 
 function ActionBars.IsAbilitySlotted(abilityId)
     abilityId = tonumber(abilityId) or 0
-    return abilityId ~= 0 and #GetEntriesForAbility(abilityId) > 0
+    return abilityId ~= 0 and HasEntryForAbility(abilityId)
 end
 
 function ActionBars.GetActiveEntryForAbility(abilityId)
@@ -264,11 +378,21 @@ function ActionBars.GetActiveEntryForAbility(abilityId)
     return nil
 end
 
+function ActionBars.GetEntryForAbility(abilityId)
+    return GetEntriesForAbility(abilityId)[1]
+end
+
 function ActionBars.GetAbilityState(abilityId)
-    abilityId = tonumber(abilityId) or 0
+    abilityId = NormalizeAbilityId(abilityId)
     local entries = GetEntriesForAbility(abilityId)
-    if ADDON.AbilityState and type(ADDON.AbilityState.Resolve) == "function" then
-        return ADDON.AbilityState.Resolve(abilityId, entries)
+    ActionBars.stateCache = ActionBars.stateCache or {}
+    if ActionBars.stateCache[abilityId] then
+        return ActionBars.stateCache[abilityId]
+    end
+    if #entries > 0 and ActionBars.trackedAbilities and ActionBars.trackedAbilities[abilityId] then
+        local state = ADDON.AbilityState.Resolve(abilityId, entries)
+        ActionBars.stateCache[abilityId] = state
+        return state
     end
     return {
         abilityId = abilityId,
@@ -299,48 +423,59 @@ function ActionBars.Init()
     ActionBars.Refresh("init")
     if EVENT_ACTION_SLOT_UPDATED then
         EVENT_MANAGER:RegisterForEvent(ADDON.name .. "ActionSlots", EVENT_ACTION_SLOT_UPDATED, function()
-            ActionBars.Refresh("action-slot-updated")
+            QueueBarsRefresh()
         end)
     end
     if EVENT_HOTBAR_SLOT_UPDATED and EVENT_HOTBAR_SLOT_UPDATED ~= EVENT_ACTION_SLOT_UPDATED then
         EVENT_MANAGER:RegisterForEvent(ADDON.name .. "HotbarSlots", EVENT_HOTBAR_SLOT_UPDATED, function()
-            ActionBars.Refresh("hotbar-slot-updated")
+            QueueBarsRefresh()
         end)
     end
     EVENT_MANAGER:RegisterForEvent(ADDON.name .. "ActionBar", EVENT_ACTION_SLOTS_ACTIVE_HOTBAR_UPDATED, function()
-        ActionBars.Refresh("active-hotbar-updated")
+        QueueBarsRefresh()
     end)
     if EVENT_ACTION_SLOTS_ALL_HOTBARS_UPDATED then
         EVENT_MANAGER:RegisterForEvent(ADDON.name .. "AllActionBars", EVENT_ACTION_SLOTS_ALL_HOTBARS_UPDATED, function()
-            ActionBars.Refresh("all-hotbars-updated")
+            QueueBarsRefresh()
         end)
     end
     EVENT_MANAGER:RegisterForEvent(ADDON.name .. "PlayerActivated", EVENT_PLAYER_ACTIVATED, function()
-        if ADDON.AbilityState and type(ADDON.AbilityState.RebuildPlayerEffects) == "function" then
-            ADDON.AbilityState.RebuildPlayerEffects()
-        end
+        ActionBars.planBars = nil
         ActionBars.Refresh("player-activated")
     end)
+end
+
+RegisterStateEvents = function()
     if EVENT_ACTION_SLOT_EFFECT_UPDATE then
         EVENT_MANAGER:RegisterForEvent(ADDON.name .. "ActionSlotEffect", EVENT_ACTION_SLOT_EFFECT_UPDATE, function()
-            RefreshOverlays("action-slot-effect")
+            RequestOverlayRefresh("action-slot-effect")
         end)
     end
     if EVENT_ACTION_SLOT_EFFECTS_CLEARED then
         EVENT_MANAGER:RegisterForEvent(ADDON.name .. "ActionSlotEffectsCleared", EVENT_ACTION_SLOT_EFFECTS_CLEARED, function()
-            RefreshOverlays("action-slot-effects-cleared")
+            RequestOverlayRefresh("action-slot-effects-cleared")
         end)
     end
-    if EVENT_POWER_UPDATE then
+    if EVENT_POWER_UPDATE and ActionBars.trackUltimate then
         EVENT_MANAGER:RegisterForEvent(ADDON.name .. "UltimatePower", EVENT_POWER_UPDATE, function(_, unitTag, _, powerType)
             if unitTag == "player" and powerType == COMBAT_MECHANIC_FLAGS_ULTIMATE then
-                RefreshOverlays("ultimate-power")
+                RequestOverlayRefresh("ultimate-power")
             end
         end)
+        if REGISTER_FILTER_UNIT_TAG and REGISTER_FILTER_POWER_TYPE and COMBAT_MECHANIC_FLAGS_ULTIMATE ~= nil then
+            EVENT_MANAGER:AddFilterForEvent(
+                ADDON.name .. "UltimatePower",
+                EVENT_POWER_UPDATE,
+                REGISTER_FILTER_UNIT_TAG,
+                "player",
+                REGISTER_FILTER_POWER_TYPE,
+                COMBAT_MECHANIC_FLAGS_ULTIMATE
+            )
+        end
     end
-    if EVENT_ULTIMATE_ABILITY_COST_CHANGED then
+    if EVENT_ULTIMATE_ABILITY_COST_CHANGED and ActionBars.trackUltimate then
         EVENT_MANAGER:RegisterForEvent(ADDON.name .. "UltimateCost", EVENT_ULTIMATE_ABILITY_COST_CHANGED, function()
-            RefreshOverlays("ultimate-cost")
+            RequestOverlayRefresh("ultimate-cost")
         end)
     end
     if EVENT_EFFECT_CHANGED then
@@ -352,7 +487,7 @@ function ActionBars.Init()
                 return
             end
             if ADDON.AbilityState and type(ADDON.AbilityState.HandleEffectChanged) == "function" then
-                ADDON.AbilityState.HandleEffectChanged(
+                local changed = ADDON.AbilityState.HandleEffectChanged(
                     changeType,
                     effectSlot,
                     beginTime,
@@ -361,8 +496,11 @@ function ActionBars.Init()
                     abilityId,
                     sourceType
                 )
+                if not changed then
+                    return
+                end
             end
-            RefreshOverlays("player-effect")
+            RequestOverlayRefresh("player-effect")
         end)
         if REGISTER_FILTER_UNIT_TAG then
             EVENT_MANAGER:AddFilterForEvent(
@@ -378,10 +516,10 @@ function ActionBars.Init()
             if ADDON.AbilityState and type(ADDON.AbilityState.RebuildPlayerEffects) == "function" then
                 ADDON.AbilityState.RebuildPlayerEffects()
             end
-            RefreshOverlays("player-effects-full-update")
+            RequestOverlayRefresh("player-effects-full-update")
         end)
     end
-    if EVENT_ACTION_SLOT_ABILITY_USED then
+    if EVENT_ACTION_SLOT_ABILITY_USED and ActionBars.trackPredictions then
         EVENT_MANAGER:RegisterForEvent(ADDON.name .. "PredictedActivities", EVENT_ACTION_SLOT_ABILITY_USED, function(_, slotIndex)
             local category
             if type(GetActiveHotbarCategory) == "function" then
@@ -394,17 +532,29 @@ function ActionBars.Init()
             if abilityId == 0 then
                 abilityId = ResolveAbilityId(slotIndex, nil)
             end
+            if not ActionBars.trackedAbilities[NormalizeAbilityId(abilityId)] then
+                return
+            end
             if ADDON.AbilityState
                 and type(ADDON.AbilityState.StartPrediction) == "function"
                 and ADDON.AbilityState.StartPrediction(abilityId) then
-                RefreshOverlays("prediction-start")
+                RequestOverlayRefresh("prediction-start")
             end
         end)
     end
-    EVENT_MANAGER:RegisterForUpdate(ADDON.name .. "AbilityStates", 100, function()
-        if ADDON.AbilityState and type(ADDON.AbilityState.ExpirePredictions) == "function" then
-            ADDON.AbilityState.ExpirePredictions()
-        end
-        PollActivityTransitions()
-    end)
+end
+
+StopStateEvents = function()
+    local events = {
+        ActionSlotEffect = EVENT_ACTION_SLOT_EFFECT_UPDATE,
+        ActionSlotEffectsCleared = EVENT_ACTION_SLOT_EFFECTS_CLEARED,
+        UltimatePower = EVENT_POWER_UPDATE,
+        UltimateCost = EVENT_ULTIMATE_ABILITY_COST_CHANGED,
+        PlayerEffects = EVENT_EFFECT_CHANGED,
+        PlayerEffectsFullUpdate = EVENT_EFFECTS_FULL_UPDATE,
+        PredictedActivities = EVENT_ACTION_SLOT_ABILITY_USED,
+    }
+    for suffix, event in pairs(events) do
+        EVENT_MANAGER:UnregisterForEvent(ADDON.name .. suffix, event)
+    end
 end

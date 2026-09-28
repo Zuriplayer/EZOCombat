@@ -4,18 +4,71 @@ EZOCombat.PvpTarget = EZOCombat.PvpTarget or {}
 local ADDON = EZOCombat
 local PvpTarget = ADDON.PvpTarget
 local WM = WINDOW_MANAGER
+local math = math
 local UNIT_TAG = "reticleover"
 local ALERT_DURATION_MS = 5000
-local FRAME_WIDTH = 440
-local FRAME_HEIGHT = 92
-local CONTENT_LEFT = 12
-local CONTENT_WIDTH = FRAME_WIDTH - (CONTENT_LEFT * 2)
-local HEALTH_BAR_HEIGHT = 18
-local CLASS_ICON_SIZE = 28
-local DEFAULT_Y = 150
+local FRAME_WIDTH = 260
+local FRAME_HEIGHT = 62
+local CONTENT_WIDTH = FRAME_WIDTH
+local HEALTH_BAR_HEIGHT = 8
+local CLASS_ICON_SIZE = 20
 local WARNING_TEXTURE = "EsoUI/Art/Miscellaneous/ESO_Icon_Warning.dds"
+local HEALTH_TEXTURE = "EsoUI/Art/Miscellaneous/listItem_backdrop_white.dds"
 local SCOPE_PVP = "pvp"
 local SCOPE_TEST = "test"
+local REFRESH_INTERVAL_MS = 100
+local REFRESH_UPDATE_NAME = ADDON.name .. "PvpTargetRefreshThrottle"
+local WORLD_UPDATE_INTERVAL_MS = 100
+local WORLD_UPDATE_NAME = ADDON.name .. "PvpTargetWorldPosition"
+local SyncTargetEvents
+
+local function SetHiddenIfChanged(control, hidden)
+    hidden = hidden == true
+    if control and control:IsHidden() ~= hidden then
+        control:SetHidden(hidden)
+    end
+end
+
+local function SetTextIfChanged(label, text)
+    text = text or ""
+    if label and label.ezoCombatText ~= text then
+        label.ezoCombatText = text
+        label:SetText(text)
+    end
+end
+
+local function SetTextureIfChanged(texture, path)
+    path = path or ""
+    if texture and texture.ezoCombatTexture ~= path then
+        texture.ezoCombatTexture = path
+        texture:SetTexture(path)
+    end
+end
+
+local function SetColorIfChanged(control, r, g, b, a)
+    if not control then
+        return
+    end
+    a = a or 1
+    if control.ezoCombatColorR ~= r
+        or control.ezoCombatColorG ~= g
+        or control.ezoCombatColorB ~= b
+        or control.ezoCombatColorA ~= a then
+        control.ezoCombatColorR = r
+        control.ezoCombatColorG = g
+        control.ezoCombatColorB = b
+        control.ezoCombatColorA = a
+        control:SetColor(r, g, b, a)
+    end
+end
+
+local function SetWidthIfChanged(control, width)
+    width = math.max(1, tonumber(width) or 1)
+    if control and control.ezoCombatWidth ~= width then
+        control.ezoCombatWidth = width
+        control:SetWidth(width)
+    end
+end
 
 local function IsPvpContext()
     local inAvA = false
@@ -123,14 +176,6 @@ local function GetClassIcon(classId)
     return ok and type(icon) == "string" and icon or ""
 end
 
-local function GetAllianceIcon(alliance)
-    if type(ZO_GetPlatformAllianceSymbolIcon) ~= "function" or not alliance then
-        return ""
-    end
-    local ok, icon = pcall(ZO_GetPlatformAllianceSymbolIcon, alliance)
-    return ok and type(icon) == "string" and icon or ""
-end
-
 local function GetAllianceTint(alliance)
     if type(_G.GetAllianceColor) ~= "function" or not alliance then
         return 1, 1, 1, 1
@@ -145,43 +190,37 @@ local function GetAllianceTint(alliance)
     return 1, 1, 1, 1
 end
 
-local function GetLevelText()
+local function GetChampionPoints()
     local isChampion = GetUnitBoolean("IsUnitChampion")
     if isChampion then
         local championPoints = GetUnitNumber("GetUnitEffectiveChampionPoints")
             or GetUnitNumber("GetUnitChampionPoints")
         if championPoints and championPoints > 0 then
-            return zo_strformat(GetString(SI_EZOCOMBAT_PVP_CP), championPoints)
+            return championPoints
         end
     end
-
-    local level = GetUnitNumber("GetUnitEffectiveLevel") or GetUnitNumber("GetUnitLevel")
-    if level and level > 0 then
-        return zo_strformat(GetString(SI_EZOCOMBAT_PVP_LEVEL), level)
-    end
-    return ""
+    return nil
 end
 
-local function GetRankText()
-    if type(GetUnitAvARank) ~= "function" then
+local function GetRankIcon(rank)
+    if type(GetAvARankIcon) ~= "function" or not rank or rank < 0 then
         return ""
     end
-    local ok, rank = pcall(function()
-        local value = GetUnitAvARank(UNIT_TAG)
-        return value
-    end)
-    rank = ok and tonumber(rank) or nil
-    if not rank or rank <= 0 then
-        return ""
-    end
-    return zo_strformat(GetString(SI_EZOCOMBAT_PVP_RANK), rank)
+    local ok, icon = pcall(GetAvARankIcon, rank)
+    return ok and type(icon) == "string" and icon or ""
 end
 
 local function GetTargetIdentity()
-    local name = GetUnitText("GetUnitName")
+    if type(GetUnitId) == "function" then
+        local ok, unitId = pcall(GetUnitId, UNIT_TAG)
+        unitId = ok and tonumber(unitId) or 0
+        if unitId and unitId > 0 then
+            return "unit:" .. tostring(unitId)
+        end
+    end
     local displayName = GetUnitText("GetUnitDisplayName")
     local classId = GetUnitNumber("GetUnitClassId") or 0
-    return name .. "|" .. displayName .. "|" .. tostring(classId)
+    return displayName .. "|" .. tostring(classId)
 end
 
 local function IsHudScene()
@@ -207,10 +246,6 @@ local function GetScope()
     return settings and settings.scope == SCOPE_TEST and SCOPE_TEST or SCOPE_PVP
 end
 
-local function IsPreviewContext()
-    return IsPvpContext() or GetScope() == SCOPE_TEST
-end
-
 local function IsLowHealthAlertEnabled()
     local settings = GetSettings()
     return settings and settings.lowHealthAlert == true
@@ -222,68 +257,213 @@ local function GetThreshold()
     return math.max(5, math.min(95, value))
 end
 
-local function GetMoveMode()
-    return PvpTarget.moveMode == true
+local function GetHeadOffsetM()
+    local settings = GetSettings()
+    local value = settings and tonumber(settings.headOffset) or 2.8
+    return math.max(1.5, math.min(4.5, value))
 end
 
-local function RequestMouseUIMode()
-    if not (SCENE_MANAGER and type(SCENE_MANAGER.SetInUIMode) == "function") then
+local function GetHoldDurationMs()
+    local settings = GetSettings()
+    local seconds = settings and tonumber(settings.holdDuration) or 1.5
+    seconds = math.max(0, math.min(5, seconds))
+    return math.floor(seconds * 1000 + 0.5)
+end
+
+local function GetNowMilliseconds()
+    if type(GetFrameTimeMilliseconds) == "function" then
+        return GetFrameTimeMilliseconds()
+    end
+    if type(GetGameTimeMilliseconds) == "function" then
+        return GetGameTimeMilliseconds()
+    end
+    return 0
+end
+
+local function QueueRefresh()
+    if not IsEnabled() or not IsHudScene() then
         return
     end
-    if type(SCENE_MANAGER.IsShowing) ~= "function" then
+    local now = GetNowMilliseconds()
+    local last = tonumber(PvpTarget.lastRefreshMs) or 0
+    if last == 0 or now <= 0 or now - last >= REFRESH_INTERVAL_MS then
+        if PvpTarget.refreshRegistered and EVENT_MANAGER then
+            EVENT_MANAGER:UnregisterForUpdate(REFRESH_UPDATE_NAME)
+            PvpTarget.refreshRegistered = false
+        end
+        PvpTarget.Refresh()
         return
     end
-    if not (SCENE_MANAGER:IsShowing("hud") or SCENE_MANAGER:IsShowing("hudui")) then
+
+    if PvpTarget.refreshRegistered or not (EVENT_MANAGER and EVENT_MANAGER.RegisterForUpdate) then
+        PvpTarget.refreshPending = true
         return
     end
-    if type(SCENE_MANAGER.IsInUIMode) == "function" and SCENE_MANAGER:IsInUIMode() then
-        return
-    end
-    pcall(function()
-        SCENE_MANAGER:SetInUIMode(true, false)
+
+    PvpTarget.refreshPending = true
+    PvpTarget.refreshRegistered = true
+    EVENT_MANAGER:RegisterForUpdate(REFRESH_UPDATE_NAME, 25, function()
+        local current = GetNowMilliseconds()
+        if current > 0
+            and current - (tonumber(PvpTarget.lastRefreshMs) or 0) < REFRESH_INTERVAL_MS then
+            return
+        end
+        EVENT_MANAGER:UnregisterForUpdate(REFRESH_UPDATE_NAME)
+        PvpTarget.refreshRegistered = false
+        PvpTarget.refreshPending = false
+        PvpTarget.Refresh()
     end)
 end
 
-local function ApplyPosition()
-    if not PvpTarget.frame or PvpTarget.moving then
+local function StopWorldUpdate()
+    if PvpTarget.worldUpdateRegistered and EVENT_MANAGER then
+        EVENT_MANAGER:UnregisterForUpdate(WORLD_UPDATE_NAME)
+    end
+    PvpTarget.worldUpdateRegistered = false
+end
+
+local function GetWorldCamera()
+    if not PvpTarget.renderControl
+        or type(Set3DRenderSpaceToCurrentCamera) ~= "function"
+        or type(GuiRender3DPositionToWorldPosition) ~= "function"
+        or type(GetWorldDimensionsOfViewFrustumAtDepth) ~= "function" then
+        return nil
+    end
+
+    local ok, camera = pcall(function()
+        Set3DRenderSpaceToCurrentCamera(PvpTarget.renderControl:GetName())
+        local cameraX, cameraY, cameraZ = GuiRender3DPositionToWorldPosition(
+            PvpTarget.renderControl:Get3DRenderSpaceOrigin()
+        )
+        local forwardX, forwardY, forwardZ = PvpTarget.renderControl:Get3DRenderSpaceForward()
+        local rightX, rightY, rightZ = PvpTarget.renderControl:Get3DRenderSpaceRight()
+        local upX, upY, upZ = PvpTarget.renderControl:Get3DRenderSpaceUp()
+        local uiW, uiH = GuiRoot:GetDimensions()
+        local cameraData = PvpTarget.camera or {}
+
+        cameraData.x = cameraX
+        cameraData.y = cameraY
+        cameraData.z = cameraZ
+        cameraData.uiW = uiW
+        cameraData.uiH = uiH
+        cameraData.i11 = -(upY * forwardZ - upZ * forwardY)
+        cameraData.i12 = -(rightZ * forwardY - rightY * forwardZ)
+        cameraData.i13 = -(rightY * upZ - rightZ * upY)
+        cameraData.i21 = -(upZ * forwardX - upX * forwardZ)
+        cameraData.i22 = -(rightX * forwardZ - rightZ * forwardX)
+        cameraData.i23 = -(rightZ * upX - rightX * upZ)
+        cameraData.i31 = -(upX * forwardY - upY * forwardX)
+        cameraData.i32 = -(rightY * forwardX - rightX * forwardY)
+        cameraData.i33 = -(rightX * upY - rightY * upX)
+        cameraData.i41 = -(upZ * forwardY * cameraX + upY * forwardX * cameraZ + upX * forwardZ * cameraY - upX * forwardY * cameraZ - upY * forwardZ * cameraX - upZ * forwardX * cameraY)
+        cameraData.i42 = -(rightX * forwardY * cameraZ + rightY * forwardZ * cameraX + rightZ * forwardX * cameraY - rightZ * forwardY * cameraX - rightY * forwardX * cameraZ - rightX * forwardZ * cameraY)
+        cameraData.i43 = -(rightZ * upY * cameraX + rightY * upX * cameraZ + rightX * upZ * cameraY - rightX * upY * cameraZ - rightY * upZ * cameraX - rightZ * upX * cameraY)
+        PvpTarget.camera = cameraData
+        return cameraData
+    end)
+    return ok and camera or nil
+end
+
+local function ProjectTargetPosition()
+    if type(GetUnitRawWorldPosition) ~= "function" then
+        return nil, nil
+    end
+
+    local ok, _, worldX, worldY, worldZ = pcall(GetUnitRawWorldPosition, UNIT_TAG)
+    worldX = ok and tonumber(worldX) or nil
+    worldY = ok and tonumber(worldY) or nil
+    worldZ = ok and tonumber(worldZ) or nil
+    if not worldX or not worldY or not worldZ then
+        return nil, nil
+    end
+
+    local camera = GetWorldCamera()
+    if not camera then
+        return nil, nil
+    end
+
+    worldY = worldY + GetHeadOffsetM() * 100
+    local screenX = worldX * camera.i11 + worldY * camera.i21 + worldZ * camera.i31 + camera.i41
+    local screenY = worldX * camera.i12 + worldY * camera.i22 + worldZ * camera.i32 + camera.i42
+    local screenZ = worldX * camera.i13 + worldY * camera.i23 + worldZ * camera.i33 + camera.i43
+    if screenZ <= 0 then
+        return nil, nil
+    end
+
+    local viewW, viewH = GetWorldDimensionsOfViewFrustumAtDepth(screenZ)
+    if not viewW or not viewH or viewW == 0 or viewH == 0 then
+        return nil, nil
+    end
+    return screenX * camera.uiW / viewW, -screenY * camera.uiH / viewH
+end
+
+local function AnchorToTarget(x, y)
+    if not PvpTarget.frame then
         return
     end
-    local settings = GetSettings()
-    local x = settings and tonumber(settings.x) or nil
-    local y = settings and tonumber(settings.y) or nil
-    PvpTarget.frame:ClearAnchors()
-    if x and y then
-        PvpTarget.frame:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, x, y)
-    else
-        PvpTarget.frame:SetAnchor(TOP, GuiRoot, TOP, 0, DEFAULT_Y)
+    if PvpTarget.worldAnchorX
+        and math.abs(PvpTarget.worldAnchorX - x) <= 0.5
+        and math.abs(PvpTarget.worldAnchorY - y) <= 0.5 then
+        return
     end
+    PvpTarget.frame:ClearAnchors()
+    PvpTarget.frame:SetAnchor(BOTTOM, PvpTarget.root, CENTER, x, y)
+    PvpTarget.worldAnchorX = x
+    PvpTarget.worldAnchorY = y
 end
 
-local function ResetAlert()
+local ResetAlert
+
+local function EnsureWorldUpdate()
+    if PvpTarget.worldUpdateRegistered
+        or not (EVENT_MANAGER and type(EVENT_MANAGER.RegisterForUpdate) == "function") then
+        return
+    end
+    PvpTarget.worldUpdateRegistered = true
+    EVENT_MANAGER:RegisterForUpdate(WORLD_UPDATE_NAME, WORLD_UPDATE_INTERVAL_MS, function()
+        if not IsHudScene() or not IsEnabled() then
+            SetHiddenIfChanged(PvpTarget.root, true)
+            SetHiddenIfChanged(PvpTarget.frame, true)
+            StopWorldUpdate()
+            return
+        end
+
+        if IsEligibleTarget() then
+            local x, y = ProjectTargetPosition()
+            if x and y then
+                AnchorToTarget(x, y)
+                SetHiddenIfChanged(PvpTarget.frame, false)
+                SetHiddenIfChanged(PvpTarget.root, false)
+            else
+                SetHiddenIfChanged(PvpTarget.frame, true)
+                SetHiddenIfChanged(PvpTarget.root, true)
+            end
+            return
+        end
+
+        local now = GetNowMilliseconds()
+        if PvpTarget.holdUntilMs and (now <= 0 or now < PvpTarget.holdUntilMs) then
+            SetHiddenIfChanged(PvpTarget.frame, false)
+            SetHiddenIfChanged(PvpTarget.root, false)
+            return
+        end
+
+        PvpTarget.holdUntilMs = nil
+        PvpTarget.targetIdentity = nil
+        PvpTarget.worldAnchorX = nil
+        PvpTarget.worldAnchorY = nil
+        SetHiddenIfChanged(PvpTarget.frame, true)
+        SetHiddenIfChanged(PvpTarget.root, true)
+        ResetAlert()
+        StopWorldUpdate()
+    end)
+end
+
+ResetAlert = function()
     PvpTarget.alertSerial = (PvpTarget.alertSerial or 0) + 1
     if PvpTarget.alert then
-        PvpTarget.alert:SetHidden(true)
+        SetHiddenIfChanged(PvpTarget.alert, true)
     end
-end
-
-local function ShowMovePreview()
-    if not PvpTarget.frame or not IsPreviewContext() then
-        return false
-    end
-
-    PvpTarget.targetIdentity = nil
-    PvpTarget.wasBelowThreshold = false
-    ResetAlert()
-    PvpTarget.frame:SetHidden(false)
-    PvpTarget.name:SetText(GetString(SI_EZOCOMBAT_PVP_MOVE_PREVIEW))
-    PvpTarget.name:SetColor(1, 1, 1, 1)
-    PvpTarget.health:SetText(GetString(SI_EZOCOMBAT_PVP_MOVE_PREVIEW_HEALTH))
-    PvpTarget.healthFill:SetWidth(CONTENT_WIDTH)
-    PvpTarget.classIcon:SetHidden(true)
-    PvpTarget.allianceIcon:SetHidden(true)
-    PvpTarget.meta:SetText(GetString(SI_EZOCOMBAT_PVP_MOVE_PREVIEW_META))
-    PvpTarget.alert:SetHidden(true)
-    return true
 end
 
 local function ShowAlert()
@@ -292,25 +472,27 @@ local function ShowAlert()
     end
     PvpTarget.alertSerial = (PvpTarget.alertSerial or 0) + 1
     local serial = PvpTarget.alertSerial
-    PvpTarget.alert:SetHidden(false)
+    SetHiddenIfChanged(PvpTarget.alert, false)
     zo_callLater(function()
         if serial == PvpTarget.alertSerial and PvpTarget.alert then
-            PvpTarget.alert:SetHidden(true)
+            SetHiddenIfChanged(PvpTarget.alert, true)
         end
     end, ALERT_DURATION_MS)
 end
 
 local function UpdateHealth(current, maximum, isDead)
     if not current or not maximum or maximum <= 0 then
-        PvpTarget.healthFill:SetWidth(0)
-        PvpTarget.health:SetText(GetString(SI_EZOCOMBAT_PVP_HEALTH_UNKNOWN))
+        SetWidthIfChanged(PvpTarget.healthFill, 0)
+        SetHiddenIfChanged(PvpTarget.healthFill, true)
+        SetTextIfChanged(PvpTarget.health, GetString(SI_EZOCOMBAT_PVP_HEALTH_UNKNOWN))
         PvpTarget.wasBelowThreshold = false
         return
     end
 
     local percent = math.max(0, math.min(100, current / maximum * 100))
-    PvpTarget.healthFill:SetWidth(CONTENT_WIDTH * percent / 100)
-    PvpTarget.health:SetText(string.format(
+    SetWidthIfChanged(PvpTarget.healthFill, CONTENT_WIDTH * percent / 100)
+    SetHiddenIfChanged(PvpTarget.healthFill, percent <= 0)
+    SetTextIfChanged(PvpTarget.health, string.format(
         "%d / %d (%d%%)",
         math.floor(current + 0.5),
         math.floor(maximum + 0.5),
@@ -335,73 +517,77 @@ local function UpdateData()
         return
     end
 
-    if GetMoveMode() and ShowMovePreview() then
-        return
-    end
-
     if not IsEligibleTarget() then
-        PvpTarget.frame:SetHidden(true)
+        local holdDurationMs = GetHoldDurationMs()
+        local now = GetNowMilliseconds()
+        if PvpTarget.targetIdentity and holdDurationMs > 0 then
+            if not PvpTarget.holdUntilMs then
+                PvpTarget.holdUntilMs = now > 0 and now + holdDurationMs or 1
+            end
+            if now <= 0 or now < PvpTarget.holdUntilMs then
+                SetHiddenIfChanged(PvpTarget.frame, false)
+                EnsureWorldUpdate()
+                return
+            end
+        end
+        PvpTarget.holdUntilMs = nil
         PvpTarget.targetIdentity = nil
+        PvpTarget.worldAnchorX = nil
+        PvpTarget.worldAnchorY = nil
         PvpTarget.wasBelowThreshold = false
         ResetAlert()
+        SetHiddenIfChanged(PvpTarget.frame, true)
+        StopWorldUpdate()
         return
     end
 
+    PvpTarget.holdUntilMs = nil
     local identity = GetTargetIdentity()
     if PvpTarget.targetIdentity ~= identity then
         PvpTarget.targetIdentity = identity
         PvpTarget.wasBelowThreshold = false
         ResetAlert()
+        PvpTarget.metadataRefreshAt = nil
     end
-
-    local name = GetUnitText("GetUnitName")
-    local displayName = GetUnitText("GetUnitDisplayName")
-    if displayName ~= "" and displayName ~= name then
-        name = name .. "  |cB0B0B0[" .. displayName .. "]|r"
-    end
-    PvpTarget.name:SetText(name ~= "" and name or GetString(SI_EZOCOMBAT_PVP_UNKNOWN_PLAYER))
 
     local current, maximum = GetHealth()
     local isDead = GetUnitBoolean("IsUnitDead")
     UpdateHealth(current, maximum, isDead)
 
-    local classId = GetUnitNumber("GetUnitClassId")
-    local className = GetUnitText("GetUnitClass")
-    local classIcon = GetClassIcon(classId)
-    PvpTarget.classIcon:SetTexture(classIcon)
-    PvpTarget.classIcon:SetHidden(classIcon == "")
+    -- Identity data rarely changes. Retry once a second for metadata which
+    -- ESO may expose after the initial reticle event; health stays at 100 ms.
+    local now = GetNowMilliseconds()
+    if not PvpTarget.metadataRefreshAt or now >= PvpTarget.metadataRefreshAt then
+        PvpTarget.metadataRefreshAt = now + 1000
+        local displayName = GetUnitText("GetUnitDisplayName")
+        if displayName == "" and GetScope() == SCOPE_TEST then
+            displayName = GetUnitText("GetUnitName")
+        end
+        SetTextIfChanged(PvpTarget.name, displayName ~= "" and displayName or GetString(SI_EZOCOMBAT_PVP_UNKNOWN_PLAYER))
+        SetColorIfChanged(PvpTarget.name, 1, 1, 1, 1)
 
-    local alliance = GetUnitNumber("GetUnitAlliance")
-    local allianceIcon = GetAllianceIcon(alliance)
-    PvpTarget.allianceIcon:SetTexture(allianceIcon)
-    PvpTarget.allianceIcon:SetHidden(allianceIcon == "")
-    local r, g, b, a = GetAllianceTint(alliance)
-    PvpTarget.name:SetColor(r, g, b, a)
-    PvpTarget.classIcon:SetColor(r, g, b, a)
-    PvpTarget.allianceIcon:SetColor(r, g, b, a)
+        local classId = GetUnitNumber("GetUnitClassId")
+        local classIcon = classId and classId > 0 and GetClassIcon(classId) or ""
+        SetTextureIfChanged(PvpTarget.classIcon, classIcon)
+        SetHiddenIfChanged(PvpTarget.classIcon, classIcon == "")
+        SetColorIfChanged(PvpTarget.classIcon, 1, 1, 1, 1)
 
-    local parts = {}
-    if className ~= "" then
-        parts[#parts + 1] = className
+        local alliance = GetUnitNumber("GetUnitAlliance")
+        local rank = GetUnitNumber("GetUnitAvARank")
+        local rankIcon = IsPlayerTarget() and rank and rank > 0 and GetRankIcon(rank) or ""
+        SetTextureIfChanged(PvpTarget.rankIcon, rankIcon)
+        SetHiddenIfChanged(PvpTarget.rankIcon, rankIcon == "")
+        local r, g, b, a = GetAllianceTint(alliance)
+        SetColorIfChanged(PvpTarget.rankIcon, r, g, b, a)
+
+        local championPoints = GetChampionPoints()
+        SetTextIfChanged(PvpTarget.cp, championPoints
+            and zo_strformat(GetString(SI_EZOCOMBAT_PVP_CP), championPoints)
+            or "")
+        SetHiddenIfChanged(PvpTarget.cp, not championPoints)
     end
-    local allianceName = ""
-    if type(GetAllianceName) == "function" and alliance then
-        local ok, value = pcall(GetAllianceName, alliance)
-        allianceName = ok and type(value) == "string" and value or ""
-    end
-    if allianceName ~= "" then
-        parts[#parts + 1] = allianceName
-    end
-    local levelText = GetLevelText()
-    if levelText ~= "" then
-        parts[#parts + 1] = levelText
-    end
-    local rankText = GetRankText()
-    if rankText ~= "" then
-        parts[#parts + 1] = rankText
-    end
-    PvpTarget.meta:SetText(table.concat(parts, "  |  "))
-    PvpTarget.frame:SetHidden(false)
+    SetHiddenIfChanged(PvpTarget.frame, false)
+    EnsureWorldUpdate()
 end
 
 local function CreateControl()
@@ -411,44 +597,33 @@ local function CreateControl()
     PvpTarget.frame:SetMouseEnabled(false)
     PvpTarget.frame:SetClampedToScreen(true)
 
-    local background = WM:CreateControl(nil, PvpTarget.frame, CT_BACKDROP)
-    background:SetAnchorFill(PvpTarget.frame)
-    background:SetCenterColor(0.02, 0.02, 0.03, 0.90)
-    background:SetEdgeColor(0.35, 0.35, 0.40, 0.95)
-    background:SetEdgeTexture(nil, 1, 1, 1, 0)
-    background:SetMouseEnabled(false)
-
     PvpTarget.name = WM:CreateControl(nil, PvpTarget.frame, CT_LABEL)
-    PvpTarget.name:SetAnchor(TOPLEFT, PvpTarget.frame, TOPLEFT, CONTENT_LEFT, 7)
-    PvpTarget.name:SetDimensions(CONTENT_WIDTH - 42, 22)
+    PvpTarget.name:SetAnchor(TOPLEFT, PvpTarget.frame, TOPLEFT, 0, 0)
+    PvpTarget.name:SetDimensions(CONTENT_WIDTH, 18)
     PvpTarget.name:SetFont("ZoFontGameBold")
+    PvpTarget.name:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
     PvpTarget.name:SetColor(1, 1, 1, 1)
     PvpTarget.name:SetMouseEnabled(false)
 
     PvpTarget.alert = WM:CreateControl(nil, PvpTarget.frame, CT_TEXTURE)
-    PvpTarget.alert:SetDimensions(28, 28)
-    PvpTarget.alert:SetAnchor(TOPRIGHT, PvpTarget.frame, TOPRIGHT, -10, 4)
+    PvpTarget.alert:SetDimensions(22, 22)
+    PvpTarget.alert:SetAnchor(TOPRIGHT, PvpTarget.frame, TOPRIGHT, 2, -2)
     PvpTarget.alert:SetTexture(WARNING_TEXTURE)
     PvpTarget.alert:SetColor(1, 0.25, 0.12, 1)
     PvpTarget.alert:SetHidden(true)
     PvpTarget.alert:SetMouseEnabled(false)
 
-    local healthBackground = WM:CreateControl(nil, PvpTarget.frame, CT_BACKDROP)
-    healthBackground:SetAnchor(TOPLEFT, PvpTarget.frame, TOPLEFT, CONTENT_LEFT, 30)
-    healthBackground:SetDimensions(CONTENT_WIDTH, HEALTH_BAR_HEIGHT)
-    healthBackground:SetCenterColor(0.20, 0.03, 0.03, 1)
-    healthBackground:SetEdgeColor(0.55, 0.20, 0.20, 1)
-    healthBackground:SetEdgeTexture(nil, 1, 1, 1, 0)
-    healthBackground:SetMouseEnabled(false)
-
-    PvpTarget.healthFill = WM:CreateControl(nil, PvpTarget.frame, CT_BACKDROP)
-    PvpTarget.healthFill:SetAnchor(TOPLEFT, healthBackground, TOPLEFT, 1, 1)
-    PvpTarget.healthFill:SetDimensions(CONTENT_WIDTH - 2, HEALTH_BAR_HEIGHT - 2)
-    PvpTarget.healthFill:SetCenterColor(0.70, 0.06, 0.06, 1)
+    PvpTarget.healthFill = WM:CreateControl(nil, PvpTarget.frame, CT_TEXTURE)
+    PvpTarget.healthFill:SetAnchor(TOPLEFT, PvpTarget.frame, TOPLEFT, 0, 21)
+    PvpTarget.healthFill:SetDimensions(CONTENT_WIDTH, HEALTH_BAR_HEIGHT)
+    PvpTarget.healthFill:SetTexture(HEALTH_TEXTURE)
+    PvpTarget.healthFill:SetColor(0.75, 0.06, 0.06, 1)
+    PvpTarget.healthFill:SetHidden(true)
     PvpTarget.healthFill:SetMouseEnabled(false)
 
     PvpTarget.health = WM:CreateControl(nil, PvpTarget.frame, CT_LABEL)
-    PvpTarget.health:SetAnchorFill(healthBackground)
+    PvpTarget.health:SetAnchor(TOPLEFT, PvpTarget.frame, TOPLEFT, 0, 17)
+    PvpTarget.health:SetDimensions(CONTENT_WIDTH, 16)
     PvpTarget.health:SetFont("ZoFontGameSmall")
     PvpTarget.health:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
     PvpTarget.health:SetVerticalAlignment(TEXT_ALIGN_CENTER)
@@ -457,43 +632,22 @@ local function CreateControl()
 
     PvpTarget.classIcon = WM:CreateControl(nil, PvpTarget.frame, CT_TEXTURE)
     PvpTarget.classIcon:SetDimensions(CLASS_ICON_SIZE, CLASS_ICON_SIZE)
-    PvpTarget.classIcon:SetAnchor(TOPLEFT, PvpTarget.frame, TOPLEFT, CONTENT_LEFT, 56)
+    PvpTarget.classIcon:SetAnchor(TOPLEFT, PvpTarget.frame, TOPLEFT, 4, 40)
     PvpTarget.classIcon:SetMouseEnabled(false)
 
-    PvpTarget.allianceIcon = WM:CreateControl(nil, PvpTarget.frame, CT_TEXTURE)
-    PvpTarget.allianceIcon:SetDimensions(CLASS_ICON_SIZE, CLASS_ICON_SIZE)
-    PvpTarget.allianceIcon:SetAnchor(TOPLEFT, PvpTarget.frame, TOPLEFT, CONTENT_LEFT + 36, 56)
-    PvpTarget.allianceIcon:SetMouseEnabled(false)
+    PvpTarget.cp = WM:CreateControl(nil, PvpTarget.frame, CT_LABEL)
+    PvpTarget.cp:SetAnchor(TOPLEFT, PvpTarget.frame, TOPLEFT, 30, 40)
+    PvpTarget.cp:SetDimensions(76, CLASS_ICON_SIZE)
+    PvpTarget.cp:SetFont("ZoFontGameSmall")
+    PvpTarget.cp:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+    PvpTarget.cp:SetColor(0.90, 0.90, 0.90, 1)
+    PvpTarget.cp:SetMouseEnabled(false)
 
-    PvpTarget.meta = WM:CreateControl(nil, PvpTarget.frame, CT_LABEL)
-    PvpTarget.meta:SetAnchor(TOPLEFT, PvpTarget.frame, TOPLEFT, CONTENT_LEFT + 74, 59)
-    PvpTarget.meta:SetDimensions(CONTENT_WIDTH - 74, 24)
-    PvpTarget.meta:SetFont("ZoFontGameSmall")
-    PvpTarget.meta:SetColor(0.85, 0.85, 0.85, 1)
-    PvpTarget.meta:SetMouseEnabled(false)
+    PvpTarget.rankIcon = WM:CreateControl(nil, PvpTarget.frame, CT_TEXTURE)
+    PvpTarget.rankIcon:SetDimensions(CLASS_ICON_SIZE, CLASS_ICON_SIZE)
+    PvpTarget.rankIcon:SetAnchor(TOPLEFT, PvpTarget.frame, TOPLEFT, 112, 40)
+    PvpTarget.rankIcon:SetMouseEnabled(false)
 
-    PvpTarget.frame:SetHandler("OnMouseDown", function(_, button)
-        if GetMoveMode() and button == MOUSE_BUTTON_INDEX_RIGHT then
-            PvpTarget.moving = true
-            PvpTarget.frame:StartMoving()
-        end
-    end)
-    PvpTarget.frame:SetHandler("OnMouseUp", function(_, button)
-        if button == MOUSE_BUTTON_INDEX_RIGHT then
-            PvpTarget.frame:StopMovingOrResizing()
-            PvpTarget.moving = false
-        end
-    end)
-    PvpTarget.frame:SetHandler("OnMoveStop", function()
-        PvpTarget.moving = false
-        local settings = GetSettings()
-        if settings then
-            settings.x = PvpTarget.frame:GetLeft()
-            settings.y = PvpTarget.frame:GetTop()
-        end
-    end)
-
-    ApplyPosition()
     PvpTarget.frame:SetHidden(true)
 end
 
@@ -512,7 +666,12 @@ function PvpTarget.Create()
     end
     PvpTarget.root = WM:CreateTopLevelWindow("EZOCombatPvpTargetRoot")
     PvpTarget.root:SetAnchorFill(GuiRoot)
+    PvpTarget.root:SetDrawLayer(DL_OVERLAY)
     PvpTarget.root:SetHidden(true)
+    PvpTarget.renderControl = WM:CreateControl("EZOCombatPvpTargetRender", PvpTarget.root, CT_CONTROL)
+    PvpTarget.renderControl:SetAnchorFill(PvpTarget.root)
+    PvpTarget.renderControl:Create3DRenderSpace()
+    PvpTarget.renderControl:SetHidden(true)
     RegisterFragment()
     CreateControl()
 end
@@ -538,6 +697,7 @@ function PvpTarget.SetScope(scope)
     end
     settings.scope = scope == SCOPE_TEST and SCOPE_TEST or SCOPE_PVP
     PvpTarget.targetIdentity = nil
+    PvpTarget.holdUntilMs = nil
     PvpTarget.wasBelowThreshold = false
     ResetAlert()
     PvpTarget.Refresh()
@@ -577,41 +737,64 @@ function PvpTarget.GetHealthThreshold()
     return GetThreshold()
 end
 
-function PvpTarget.SetMoveMode(enabled)
-    PvpTarget.moveMode = enabled == true
-    if PvpTarget.moveMode then
-        RequestMouseUIMode()
+function PvpTarget.SetHeadOffset(value)
+    local settings = GetSettings()
+    if not settings then
+        return false
     end
-    if PvpTarget.frame then
-        if not PvpTarget.moveMode and PvpTarget.moving then
-            PvpTarget.frame:StopMovingOrResizing()
-            PvpTarget.moving = false
-        end
-        PvpTarget.frame:SetMovable(PvpTarget.moveMode)
-        PvpTarget.frame:SetMouseEnabled(PvpTarget.moveMode)
-        ApplyPosition()
-    end
+    value = tonumber(value) or 2.8
+    settings.headOffset = math.max(1.5, math.min(4.5, math.floor(value * 10 + 0.5) / 10))
     PvpTarget.Refresh()
-    return PvpTarget.moveMode
+    return true
 end
 
-function PvpTarget.IsMoveMode()
-    return GetMoveMode()
+function PvpTarget.GetHeadOffset()
+    return GetHeadOffsetM()
+end
+
+function PvpTarget.SetHoldDuration(value)
+    local settings = GetSettings()
+    if not settings then
+        return false
+    end
+    value = tonumber(value) or 1.5
+    settings.holdDuration = math.max(0, math.min(5, math.floor(value * 2 + 0.5) / 2))
+    if settings.holdDuration <= 0 and PvpTarget.holdUntilMs then
+        PvpTarget.holdUntilMs = nil
+        PvpTarget.targetIdentity = nil
+        SetHiddenIfChanged(PvpTarget.frame, true)
+        StopWorldUpdate()
+    end
+    PvpTarget.Refresh()
+    return true
+end
+
+function PvpTarget.GetHoldDuration()
+    local settings = GetSettings()
+    local value = settings and tonumber(settings.holdDuration) or 1.5
+    return math.max(0, math.min(5, value))
 end
 
 function PvpTarget.Refresh()
-    PvpTarget.Create()
-    if not IsHudScene() or not IsEnabled() then
-        PvpTarget.root:SetHidden(true)
-        PvpTarget.frame:SetHidden(true)
+    PvpTarget.lastRefreshMs = GetNowMilliseconds()
+    PvpTarget.refreshPending = false
+    local active = IsEnabled() and IsHudScene() and (GetScope() == SCOPE_TEST or IsPvpContext()) or false
+    SyncTargetEvents(active)
+    if not active then
+        StopWorldUpdate()
+        PvpTarget.targetIdentity = nil
+        PvpTarget.holdUntilMs = nil
+        PvpTarget.metadataRefreshAt = nil
+        PvpTarget.wasBelowThreshold = false
+        ResetAlert()
+        SetHiddenIfChanged(PvpTarget.root, true)
+        SetHiddenIfChanged(PvpTarget.frame, true)
         return
     end
-    if GetMoveMode() then
-        RequestMouseUIMode()
-    end
+    PvpTarget.Create()
     UpdateData()
     local frameVisible = not PvpTarget.frame:IsHidden()
-    PvpTarget.root:SetHidden(not frameVisible)
+    SetHiddenIfChanged(PvpTarget.root, not frameVisible)
 end
 
 function PvpTarget.DebugSnapshot()
@@ -621,7 +804,7 @@ function PvpTarget.DebugSnapshot()
     local current, maximum = GetHealth()
     local percent = current and maximum and maximum > 0 and (current / maximum * 100) or nil
     ADDON.DebugLog(string.format(
-        "pvp-target scope=%s context=%s exists=%s player=%s attackable=%s name=%s health=%s/%s percent=%s threshold=%s alert=%s move=%s",
+        "pvp-target scope=%s context=%s exists=%s player=%s attackable=%s name=%s health=%s/%s percent=%s threshold=%s alert=%s hold=%s headOffset=%s",
         tostring(GetScope()),
         tostring(IsPvpContext()),
         tostring(DoesTargetExist()),
@@ -633,23 +816,23 @@ function PvpTarget.DebugSnapshot()
         tostring(percent and math.floor(percent + 0.5) or nil),
         tostring(GetThreshold()),
         tostring(IsLowHealthAlertEnabled()),
-        tostring(GetMoveMode())
+        tostring(GetHoldDurationMs() / 1000),
+        tostring(GetHeadOffsetM())
     ))
     return true
 end
 
-local function RegisterEvents()
+local function RegisterTargetEvents()
     local namespace = ADDON.name .. "PvpTarget"
     local function OnTargetChanged()
-        PvpTarget.targetIdentity = nil
-        PvpTarget.wasBelowThreshold = false
         ResetAlert()
+        PvpTarget.metadataRefreshAt = nil
         PvpTarget.Refresh()
     end
 
     EVENT_MANAGER:RegisterForEvent(namespace, EVENT_RETICLE_TARGET_CHANGED, OnTargetChanged)
     EVENT_MANAGER:RegisterForEvent(namespace, EVENT_RETICLE_TARGET_PLAYER_CHANGED, OnTargetChanged)
-    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_POWER_UPDATE, PvpTarget.Refresh)
+    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_POWER_UPDATE, QueueRefresh)
     EVENT_MANAGER:AddFilterForEvent(
         namespace,
         EVENT_POWER_UPDATE,
@@ -658,22 +841,37 @@ local function RegisterEvents()
         REGISTER_FILTER_UNIT_TAG,
         UNIT_TAG
     )
-    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_UNIT_DEATH_STATE_CHANGED, PvpTarget.Refresh)
+    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_UNIT_DEATH_STATE_CHANGED, QueueRefresh)
     EVENT_MANAGER:AddFilterForEvent(namespace, EVENT_UNIT_DEATH_STATE_CHANGED, REGISTER_FILTER_UNIT_TAG, UNIT_TAG)
-    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_UNIT_CREATED, PvpTarget.Refresh)
+    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_UNIT_CREATED, QueueRefresh)
     EVENT_MANAGER:AddFilterForEvent(namespace, EVENT_UNIT_CREATED, REGISTER_FILTER_UNIT_TAG, UNIT_TAG)
-    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_UNIT_DESTROYED, PvpTarget.Refresh)
+    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_UNIT_DESTROYED, QueueRefresh)
     EVENT_MANAGER:AddFilterForEvent(namespace, EVENT_UNIT_DESTROYED, REGISTER_FILTER_UNIT_TAG, UNIT_TAG)
-    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_ZONE_CHANGED, PvpTarget.Refresh)
-    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_PLAYER_ACTIVATED, PvpTarget.Refresh)
-    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_TARGET_MARKER_UPDATE, PvpTarget.Refresh)
-    if SCENE_MANAGER and type(SCENE_MANAGER.RegisterCallback) == "function" then
-        SCENE_MANAGER:RegisterCallback("SceneStateChanged", PvpTarget.Refresh)
+end
+
+SyncTargetEvents = function(active)
+    if active == (PvpTarget.eventsActive == true) then
+        return
     end
+    PvpTarget.eventsActive = active
+    if active then
+        RegisterTargetEvents()
+        return
+    end
+    for _, event in ipairs({ EVENT_RETICLE_TARGET_CHANGED, EVENT_RETICLE_TARGET_PLAYER_CHANGED,
+        EVENT_POWER_UPDATE, EVENT_UNIT_DEATH_STATE_CHANGED, EVENT_UNIT_CREATED, EVENT_UNIT_DESTROYED }) do
+        EVENT_MANAGER:UnregisterForEvent(ADDON.name .. "PvpTarget", event)
+    end
+    EVENT_MANAGER:UnregisterForUpdate(REFRESH_UPDATE_NAME)
+    PvpTarget.refreshRegistered = false
 end
 
 function PvpTarget.Init()
-    PvpTarget.Create()
-    RegisterEvents()
+    local namespace = ADDON.name .. "PvpTargetLifecycle"
+    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_ZONE_CHANGED, PvpTarget.Refresh)
+    EVENT_MANAGER:RegisterForEvent(namespace, EVENT_PLAYER_ACTIVATED, PvpTarget.Refresh)
+    if SCENE_MANAGER and type(SCENE_MANAGER.RegisterCallback) == "function" then
+        SCENE_MANAGER:RegisterCallback("SceneStateChanged", PvpTarget.Refresh)
+    end
     PvpTarget.Refresh()
 end

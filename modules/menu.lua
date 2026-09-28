@@ -444,18 +444,38 @@ local function BuildOptions()
             default = 30,
         },
         {
-            type = "checkbox",
-            name = GetString(SI_EZOCOMBAT_PVP_MOVE_FRAME),
-            tooltip = GetString(SI_EZOCOMBAT_PVP_MOVE_FRAME_TOOLTIP),
-            getFunc = ADDON.PvpTarget.IsMoveMode,
+            type = "slider",
+            name = GetString(SI_EZOCOMBAT_PVP_HEAD_OFFSET),
+            tooltip = GetString(SI_EZOCOMBAT_PVP_HEAD_OFFSET_TOOLTIP),
+            min = 1.5,
+            max = 4.5,
+            step = 0.1,
+            decimals = 1,
+            getFunc = ADDON.PvpTarget.GetHeadOffset,
             setFunc = function(value)
-                ADDON.PvpTarget.SetMoveMode(value == true)
-                Settings.RequestSettingsRefresh(false)
+                ADDON.PvpTarget.SetHeadOffset(value)
             end,
             disabled = function()
                 return not ADDON.PvpTarget.IsEnabled()
             end,
-            default = false,
+            default = 2.8,
+        },
+        {
+            type = "slider",
+            name = GetString(SI_EZOCOMBAT_PVP_HOLD_DURATION),
+            tooltip = GetString(SI_EZOCOMBAT_PVP_HOLD_DURATION_TOOLTIP),
+            min = 0,
+            max = 5,
+            step = 0.5,
+            decimals = 1,
+            getFunc = ADDON.PvpTarget.GetHoldDuration,
+            setFunc = function(value)
+                ADDON.PvpTarget.SetHoldDuration(value)
+            end,
+            disabled = function()
+                return not ADDON.PvpTarget.IsEnabled()
+            end,
+            default = 1.5,
         },
         CreateInfoHeader(GetString(SI_EZOCOMBAT_OPTIONS_PVP_SCT), GetString(SI_EZOCOMBAT_OPTIONS_PVP_SCT_TOOLTIP)),
         {

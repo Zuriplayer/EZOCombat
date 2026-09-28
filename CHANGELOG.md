@@ -1,5 +1,91 @@
 # Changelog
 
+## 0.2.50-beta - 2026-09-28
+
+- Update the manifest to API `101051`, confirmed as the current client API by
+  the user. Keep runtime/FPS acceptance separate from API declaration and
+  static/mock validation.
+- Deliver the accumulated ability-state, performance, PvP target lifecycle and
+  native binding legibility changes documented below.
+
+## 0.2.49-beta - 2026-09-07
+
+- Restrict automatic state queries, effect retention and cast predictions to
+  enabled trackers slotted on either weapon bar. Stop the state ticker and
+  evidence listeners when no state consumer remains or HUD icons are disabled.
+- Share each 100 ms state snapshot across activity detection, priorities and
+  stack labels; update the HUD for stack-only changes without repainting on
+  unchanged combat-event bursts.
+- Read Bound Armaments native stacks before fallback and cache zero as well as
+  positive recovery results, with a maximum of two fallback scans per second.
+- Coalesce slot notifications, index slotted ability families, reuse unchanged
+  slot metadata and priority/layout calculations, and skip closed-window slot
+  updates plus redundant font, binding, texture and anchor writes.
+- Disconnect inactive/out-of-scope PvP target listeners, create its controls on
+  demand and separate identity metadata refreshes from health updates. Preserve
+  native SCT recovery snapshots when restoration calls fail.
+- Add standalone Lua 5.1 regressions for lifecycle, native evidence, priority,
+  rendering and restoration. Client FPS improvement and ESO acceptance remain
+  pending; no claim that the PvP visuals caused the reported freezes.
+- Increase native binding icon markup from 80% to 120% and enlarge the keyboard
+  font/footer. Automatic layouts reserve the wider/taller binding area without
+  changing saved manual icon coordinates.
+
+## 0.2.48-beta - 2026-08-28
+
+- Show Bound Armaments' native stack count as a numeric label in the lower-right
+  corner of its HUD icon, using the same explicit stack provider that controls
+  active/inactive visibility.
+- Require at least four stacks for Bound Armaments' active condition.
+- Fall back to the player effect `203447` when ESO's action-slot stack API
+  reports zero, matching EZOHub's verified Bound Armaments pattern.
+- Retry the player-effect fallback while its cached value is zero, so the
+  counter is not lost when the action-slot event omits the updated stack count.
+- Keep the count hidden for zero stacks and for abilities without an explicit
+  stack-count provider.
+
+## 0.2.44-beta - 2026-08-28
+
+- Correct Crystal Fragments state detection so the separate three-second
+  cost-reduction timer never marks the skill active; only the exact charged
+  instant/half-cost proc effect (`46327`) does.
+- Accept that verified self-proc even when ESO reports inconsistent source
+  metadata during the initial player-effect rebuild.
+
+## 0.2.43-beta - 2026-08-28
+
+- Make Crystal Fragments use an explicit charged-proc provider: only its native
+  player proc effect marks it active, while the separate three-second
+  cost-reduction timer is ignored.
+- Keep Crystal Fragments' proc cast variant as an identity alias only, so a
+  transient cast effect cannot be mistaken for the loaded instant/half-cost
+  proc.
+
+## 0.2.42-beta - 2026-08-28
+
+- Standardizes manual tracker, automatic-group, PvP target-frame, and main-window
+  movement on the right mouse button while preserving other click actions.
+- Redesigns the PvP target frame as a small background-free world-following HUD:
+  display name above a compact health bar, normalized class icon, CP and native
+  AvA rank icon, with 100 ms position updates and a configurable temporary hold
+  after reticle loss.
+- Removes the invalid target-frame edge-texture setup and avoids rebuilding or
+  destroying controls while the target frame follows a player or dummy.
+- Removes the obsolete manual target-frame move preview and EZOCore layout surface;
+  the compact frame now follows the target automatically with a configurable head
+  offset and never captures mouse or gamepad input.
+- Treats Bound Armaments as active when its native slot stack count is above zero,
+  so the active-or-ultimate-ready condition reflects that the stored weapons can
+  be fired; the stack-count provider is explicit and does not affect other skills.
+
+## 0.2.41-beta - 2026-08-28
+
+- Coalesce high-frequency ability-state overlay refreshes to a 100 ms cadence, preventing player-effect, slot-effect, prediction and ultimate-resource event bursts from forcing a full HUD redraw repeatedly in the same frame window.
+- Add native `EVENT_POWER_UPDATE` filters for player ultimate power when available, so unrelated power updates do not enter EZOCombat's ultimate HUD path.
+- Avoid redundant HUD and PvP target-frame UI writes by caching text, texture, dimensions, visibility, color, width and anchor state before calling ZOS UI setters.
+- Reduce short-lived table allocations in hot visibility checks by avoiding temporary slot-match and active-effect lookup tables.
+- Prevent mouse-only move previews from blocking gamepad play: EZOCombat no longer requests ESO mouse UI mode while gamepad is preferred, disables target-frame move mode when switching to gamepad, and releases UI mode when its window or move preview is closed or hidden by a scene change.
+
 ## 0.2.39-beta - 2026-08-28
 
 - Register the PvP target frame as its own optional EZOCore `family.layout` surface (`ezocombat.pvp_target`), so Settings > EZO can enable or disable the same mouse-only move preview exposed by EZOCombat's local LAM setting.

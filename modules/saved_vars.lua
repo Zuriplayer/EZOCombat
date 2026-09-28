@@ -10,6 +10,7 @@ local MIN_ICON_SIZE = 32
 local MAX_ICON_SIZE = 128
 local DEFAULT_LAYOUT_SPACING = 8
 local DEFAULT_PRIORITY_SPACING = 18
+local DEFAULT_PVP_HEAD_OFFSET = 2.8
 
 local function GetWorld()
     if type(GetWorldName) ~= "function" then
@@ -44,6 +45,8 @@ local defaults = {
         scope = "pvp",
         lowHealthAlert = true,
         healthThreshold = 30,
+        holdDuration = 1.5,
+        headOffset = DEFAULT_PVP_HEAD_OFFSET,
     },
     pvpSct = {
         enabled = false,
@@ -101,6 +104,10 @@ function SavedVars.Init()
     sv.pvpTarget.lowHealthAlert = sv.pvpTarget.lowHealthAlert ~= false
     local healthThreshold = tonumber(sv.pvpTarget.healthThreshold) or 30
     sv.pvpTarget.healthThreshold = math.max(5, math.min(95, math.floor(healthThreshold + 0.5)))
+    local holdDuration = tonumber(sv.pvpTarget.holdDuration) or 1.5
+    sv.pvpTarget.holdDuration = math.max(0, math.min(5, math.floor(holdDuration * 2 + 0.5) / 2))
+    local headOffset = tonumber(sv.pvpTarget.headOffset) or DEFAULT_PVP_HEAD_OFFSET
+    sv.pvpTarget.headOffset = math.max(1.5, math.min(4.5, math.floor(headOffset * 10 + 0.5) / 10))
     sv.pvpSct = sv.pvpSct or {}
     sv.pvpSct.enabled = sv.pvpSct.enabled == true
     if sv.pvpSct.scope ~= "test" then

@@ -37,8 +37,15 @@ con un ID distinto al ID equipado. La presencia del efecto es actividad y su
 ausencia solo es negativa después de confirmar que la lista de efectos es
 legible.
 
-Ejemplo: Crystal Fragments relaciona la habilidad equipada con su efecto de
-proc.
+Crystal Fragments es un caso más concreto: su estado activo es únicamente la
+carga que hace que el siguiente Crystal Fragments sea instantáneo y cueste la
+mitad. El efecto de proc `46327` es la señal activa. El temporizador corto que
+aparece en la descripción de la habilidad corresponde a otro beneficio: la
+siguiente habilidad no definitiva cuesta un 10% menos durante tres segundos;
+no debe marcar Crystal Fragments como activo. La variante de lanzamiento
+`46324` solo sirve para mantener la identidad del tracker y tampoco se acepta
+como efecto activo. La desaparición verificada de `46327` devuelve el estado a
+inactivo.
 
 ### Toggle nativo
 
@@ -46,6 +53,28 @@ Se usa para habilidades que permanecen encendidas hasta una desactivación
 explícita. `IsSlotToggled` aporta tanto la señal positiva como la negativa.
 
 Ejemplos: Banner Bearer y la ultimate persistente del oso Warden.
+
+### Acumulaciones disponibles en el slot
+
+Se usa para habilidades cuya acción se puede lanzar cuando el contador nativo
+de acumulaciones del slot es mayor que cero, aunque no exista un temporizador
+activo convencional. El proveedor debe estar registrado explícitamente para
+la habilidad; un contador genérico de otra habilidad no se interpreta como
+actividad.
+
+Bound Armaments es el ejemplo verificado: una o más armas acumuladas hacen que
+la habilidad esté disponible para disparar. Un contador legible a cero aporta
+la evidencia negativa correspondiente. El HUD reutiliza ese mismo estado para
+mostrar `N` en la esquina inferior derecha del icono cuando `N` es mayor que cero;
+si el API del slot no está disponible o devuelve cero, consulta el efecto de
+jugador `203447` como fallback específico. El slot se consulta primero y un
+valor positivo evita el escaneo. El respaldo cachea también el cero, acepta
+actualizaciones por eventos y limita los escaneos de recuperación a uno cada
+500 ms; los valores con vencimiento no se conservan indefinidamente. No
+muestra un contador genérico para habilidades que no tengan
+este proveedor explícito. En Bound Armaments, la condición activa exige al menos
+cuatro acumulaciones; el número visual sigue mostrando el valor real cuando el
+icono está visible con la condición equipada.
 
 ### Ciclo conocido desde el lanzamiento
 
@@ -74,6 +103,14 @@ ofrece ninguna señal positiva al lanzar una habilidad, su icono puede seguir
 visible durante el efecto y será necesario identificar un proveedor verificable.
 
 ## Procedimiento para casos similares
+
+El motor automático solo evalúa trackers habilitados y slotados en alguna de
+las dos barras. Los consumidores comparten una instantánea por pasada de 100 ms.
+Eliminar el último consumidor o apagar los iconos desregistra el sondeo y sus
+eventos de evidencias; las notificaciones de barras permanecen para descubrir
+nuevos slots. Los efectos retenidos se limitan a IDs relevantes para los
+proveedores seleccionados. No se reconstruyen lanzamientos predichos que
+ocurrieron con el seguimiento apagado.
 
 1. Confirmar el ID equipado y cualquier ID efectivo, de proc o de efecto.
 2. Capturar `phase`, `source`, `provider`, temporizador, toggle y efectos con

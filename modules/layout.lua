@@ -336,10 +336,24 @@ function Layout.Calculate(iconSize, keybindHeight)
     keybindHeight = math.max(0, tonumber(keybindHeight) or 0)
     local rootWidth = GuiRoot and GuiRoot:GetWidth() or 1920
     local rootHeight = GuiRoot and GuiRoot:GetHeight() or 1080
+    local bindingWidth = ADDON.Overlays and ADDON.Overlays.KEYBIND_WIDTH or 80
+    local trackers = ADDON.Priority.ListTrackers()
+    local bars = ADDON.ActionBars.bars
+    local mode, alignment = Layout.GetMode(), Layout.GetAlignment()
+    local spacing, priorityGap = Layout.GetIconSpacing(), Layout.GetPrioritySpacing()
+    local cache = Layout.calculationCache
+    if cache and cache.trackers == trackers and cache.bars == bars
+        and cache.iconSize == iconSize and cache.keybindHeight == keybindHeight
+        and cache.bindingWidth == bindingWidth
+        and cache.rootWidth == rootWidth and cache.rootHeight == rootHeight
+        and cache.mode == mode and cache.alignment == alignment
+        and cache.spacing == spacing and cache.priorityGap == priorityGap then
+        return cache.result
+    end
     local availableWidth = math.max(1, rootWidth - SCREEN_MARGIN * 2)
     local availableHeight = math.max(1, rootHeight - SCREEN_MARGIN * 2)
     local groups = BuildGroups()
-    local cellWidth = math.max(80, iconSize)
+    local cellWidth = math.max(bindingWidth, iconSize)
     local cellHeight = iconSize + keybindHeight
     local iconSpacing = Layout.GetIconSpacing()
     local prioritySpacing = Layout.GetPrioritySpacing()
@@ -367,12 +381,18 @@ function Layout.Calculate(iconSize, keybindHeight)
         )
     end
 
-    return {
+    local result = {
         width = math.max(1, width),
         height = math.max(1, height),
         positions = positions,
         groups = groups,
     }
+    Layout.calculationCache = {
+        trackers = trackers, bars = bars, iconSize = iconSize, keybindHeight = keybindHeight,
+        rootWidth = rootWidth, rootHeight = rootHeight, mode = mode, alignment = alignment,
+        spacing = spacing, priorityGap = priorityGap, bindingWidth = bindingWidth, result = result,
+    }
+    return result
 end
 
 local function GetManualAnchor()
@@ -388,7 +408,8 @@ local function GetManualAnchor()
             minX = minX and math.min(minX, x) or x
             minY = minY and math.min(minY, y) or y
             maxX = maxX and math.max(maxX, x + iconSize) or x + iconSize
-            maxY = maxY and math.max(maxY, y + iconSize + 20) or y + iconSize + 20
+            local cellHeight = iconSize + (ADDON.Overlays and ADDON.Overlays.KEYBIND_HEIGHT or 20)
+            maxY = maxY and math.max(maxY, y + cellHeight) or y + cellHeight
         end
     end
 
@@ -468,7 +489,7 @@ end
 function Layout.DebugSnapshot()
     local result = Layout.Calculate(
         ADDON.Overlays and ADDON.Overlays.GetIconSize and ADDON.Overlays.GetIconSize() or 54,
-        20
+        ADDON.Overlays and ADDON.Overlays.KEYBIND_HEIGHT or 20
     )
     local x, y = Layout.GetAnchor(Layout.GetMode())
     local groups = {}

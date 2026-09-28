@@ -74,8 +74,24 @@ function Priority.GetProfile()
     return ADDON.Context and ADDON.Context.GetActiveProfile and ADDON.Context.GetActiveProfile() or nil
 end
 
+function Priority.Invalidate()
+    Priority.cachedTrackers = nil
+end
+
+local function CompareTrackers(a, b)
+    local aRank = SortRank(a.priority)
+    local bRank = SortRank(b.priority)
+    if aRank == bRank then
+        return tostring(a.id) < tostring(b.id)
+    end
+    return aRank < bRank
+end
+
 function Priority.ListTrackers()
     local profile = Priority.GetProfile()
+    if Priority.cachedTrackers and Priority.cachedProfile == profile then
+        return Priority.cachedTrackers
+    end
     local trackers = {}
     if not profile then
         return trackers
@@ -86,14 +102,9 @@ function Priority.ListTrackers()
         tracker.condition = IsKnownCondition(tracker.condition) and tracker.condition or Priority.CONDITION_SLOTTED
         trackers[#trackers + 1] = tracker
     end
-    table.sort(trackers, function(a, b)
-        local aRank = SortRank(a.priority)
-        local bRank = SortRank(b.priority)
-        if aRank == bRank then
-            return tostring(a.id) < tostring(b.id)
-        end
-        return aRank < bRank
-    end)
+    table.sort(trackers, CompareTrackers)
+    Priority.cachedProfile = profile
+    Priority.cachedTrackers = trackers
     return trackers
 end
 
@@ -119,6 +130,7 @@ function Priority.EnsureTracker(entry)
             priority = Priority.DEFAULT,
         }
         profile.trackers[id] = tracker
+        Priority.Invalidate()
         DebugLog(string.format("created tracker id=%s ability=%s priority=%s", id, tostring(tracker.abilityId), tostring(tracker.priority)))
     end
     return tracker
@@ -129,6 +141,7 @@ function Priority.SetEnabled(tracker, enabled)
         return
     end
     tracker.enabled = enabled == true
+    Priority.Invalidate()
     DebugLog(string.format("enabled id=%s value=%s", tostring(tracker.id), tostring(tracker.enabled)))
     if ADDON.Overlays then
         ADDON.Overlays.Refresh()
@@ -140,6 +153,7 @@ function Priority.SetPriority(tracker, value)
         return
     end
     tracker.priority = NormalizePriority(value)
+    Priority.Invalidate()
     DebugLog(string.format(
         "priority id=%s value=%s",
         tostring(tracker.id),
@@ -172,6 +186,7 @@ function Priority.SetCondition(tracker, condition)
         return
     end
     tracker.condition = condition
+    Priority.Invalidate()
     DebugLog(string.format("condition id=%s value=%s", tostring(tracker.id), tostring(tracker.condition)))
     if ADDON.Overlays then
         ADDON.Overlays.Refresh()

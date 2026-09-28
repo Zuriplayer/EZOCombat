@@ -85,6 +85,11 @@ local function IsRadialControllerShown(controller)
         and (IsRadialMenuShown(controller.menu) or IsRadialMenuShown(controller.radialMenu))
 end
 
+local RADIAL_CONTROLLERS = {
+    "UTILITY_WHEEL_KEYBOARD", "UTILITY_WHEEL_GAMEPAD", "FISHING_KEYBOARD", "FISHING_GAMEPAD",
+    "TARGET_MARKER_WHEEL_KEYBOARD", "TARGET_MARKER_WHEEL_GAMEPAD", "ACCESSIBLE_ASSIGNABLE_UTILITY_WHEEL_GAMEPAD",
+}
+
 function Context.IsHudOverlayBlocked()
     if INTERACTIVE_WHEEL_MANAGER and type(INTERACTIVE_WHEEL_MANAGER.IsInteracting) == "function" then
         local ok, interacting = pcall(INTERACTIVE_WHEEL_MANAGER.IsInteracting, INTERACTIVE_WHEEL_MANAGER)
@@ -93,17 +98,8 @@ function Context.IsHudOverlayBlocked()
         end
     end
 
-    local controllers = {
-        _G.UTILITY_WHEEL_KEYBOARD,
-        _G.UTILITY_WHEEL_GAMEPAD,
-        _G.FISHING_KEYBOARD,
-        _G.FISHING_GAMEPAD,
-        _G.TARGET_MARKER_WHEEL_KEYBOARD,
-        _G.TARGET_MARKER_WHEEL_GAMEPAD,
-        _G.ACCESSIBLE_ASSIGNABLE_UTILITY_WHEEL_GAMEPAD,
-    }
-    for _, controller in ipairs(controllers) do
-        if IsRadialControllerShown(controller) then
+    for _, name in ipairs(RADIAL_CONTROLLERS) do
+        if IsRadialControllerShown(_G[name]) then
             return true
         end
     end
@@ -119,6 +115,12 @@ function Context.IsHudOverlayBlocked()
 end
 
 function Context.RefreshHudVisibility()
+    local sv = ADDON.sv
+    if sv and not (sv.general and sv.general.enabled)
+        and not (sv.pvpTarget and sv.pvpTarget.enabled)
+        and not (ADDON.Window and ADDON.Window.requestedVisible) then
+        return
+    end
     local blocked = Context.IsHudOverlayBlocked()
     if Context._hudOverlayBlocked == blocked then
         return

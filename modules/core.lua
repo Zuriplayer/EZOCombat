@@ -260,33 +260,6 @@ function ADDON.RegisterLayoutWithEZOCore()
         })
     end
 
-    if ADDON.PvpTarget then
-        RegisterSurface({
-            id = "ezocombat.pvp_target",
-            addonId = "ezocombat",
-            addonName = "EZOCombat",
-            name = function() return GetString(SI_EZOCOMBAT_PVP_TARGET_SURFACE) end,
-            tooltip = function() return GetString(SI_EZOCOMBAT_PVP_TARGET_SURFACE_TOOLTIP) end,
-            sortOrder = 110,
-            setEditMode = function(enabled)
-                if enabled == true
-                    and not (ADDON.sv
-                        and ADDON.sv.pvpTarget
-                        and ADDON.sv.pvpTarget.enabled == true) then
-                    return false
-                end
-                ADDON.PvpTarget.SetMoveMode(enabled == true)
-                return ADDON.PvpTarget.IsMoveMode() == (enabled == true)
-            end,
-            isEditMode = ADDON.PvpTarget.IsMoveMode,
-            canEdit = function()
-                return ADDON.sv
-                    and ADDON.sv.pvpTarget
-                    and ADDON.sv.pvpTarget.enabled == true
-            end,
-        })
-    end
-
     return registeredAny
 end
 

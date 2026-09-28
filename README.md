@@ -8,15 +8,27 @@ Support, bug reports, and suggestions: https://discord.gg/ekw8zUAcRm
 
 ## Beta Status
 
-Version: `0.2.39-beta`
+Version: `0.2.50-beta`
 
 This functional beta provides the persistent UI, priority foundation, and a layered ability-state engine. Ability-specific effect mappings, remaining-time thresholds, and class rule packs still require separate in-client verification.
 
 ## Requirements
 
+### Performance and tracking lifecycle
+
+- Automatic ability-state work is restricted to enabled trackers on either current weapon bar. Ordinary `slotted` trackers need no state polling; explicit stack counters still do. Unslotted/unconfigured abilities do not start predictions or native slot-state queries.
+- A shared 100 ms state pass serves priorities and stack labels. Unchanged states do not repaint the HUD. Layouts and slot metadata are reused until their inputs change; a closed action-bar window does not repaint its slots.
+- With HUD icons disabled, or no trackers needing state evidence, the state timer and combat-evidence listeners are unregistered. Slot/weapon-bar and profile lifecycle notifications remain to discover newly slotted abilities. This is not a global addon OFF switch: the PvP frame and native damage cone have independent settings.
+- Bound Armaments reads native stacks first. Its player-effect recovery is event-fed and limited to one scan per 500 ms when native stacks are zero/unavailable, including caching zero. The four-stack active threshold is unchanged.
+- The PvP frame disconnects target listeners outside its enabled scope/HUD scenes and creates controls only when needed. Identity metadata refreshes at most once per second for the same target; health and projection retain their 100 ms cadence. SCT restoration retains its original snapshot after native call failures so restoration can be retried.
+- Re-enabling tracking rebuilds current native effects. Predicted cast cycles cannot reconstruct casts made while tracking was disabled or the skill was unslotted; test these with a fresh cast.
+- Run the standalone Lua 5.1 regression suite from the project root with `lua tools/tests/performance_spec.lua`. It uses mock ESO APIs and is not loaded by the addon. Passing it is not proof of improved client FPS or LIVE/PTS acceptance.
+
+### Runtime dependencies
+
 - The Elder Scrolls Online PC client.
 - `LibAddonMenu-2.0`.
-- ESO API versions declared in the manifest: `101049 101050`.
+- ESO API version declared in the manifest: `101051` (current client API confirmed by the user on 2026-09-28; not a substitute for runtime/FPS validation).
 - Optional developer/debug addons:
   - `LibDebugLogger`
   - `DebugLogViewer`
@@ -44,13 +56,16 @@ This functional beta provides the persistent UI, priority foundation, and a laye
 - Character-wide HUD icon size from 32 to 128 pixels in LAM. Changing it resizes existing trackers without changing their saved top-left positions.
 - Manual, vertical-by-priority, and horizontal-by-priority HUD arrangements. Vertical mode places `Always visible`, P1, P2, P3, P4, and P5 from top to bottom and puts equal-priority icons side by side. Horizontal mode places those groups from left to right and stacks equal-priority icons vertically.
 - Automatic layouts reserve stable cells from every enabled tracker that is still slotted in the current profile. Activity conditions and the `Show all`/highest/two-highest policy only hide or show those cells, so ordinary combat-state and weapon-bar transitions do not reflow the remaining icons. Groups wrap to extra rows or columns when required by the screen size.
+- Combat-state HUD refreshes are coalesced to a 100 ms cadence and skip unchanged ZOS UI writes, reducing pressure from player-effect, slot-effect and ultimate-resource event bursts during dense combat.
 - Automatic-layout alignment, icon spacing, and priority-group spacing are configurable in LAM. Each class/role profile keeps separate normalized vertical and horizontal mouse-drag positions, while switching back to manual restores the untouched individual icon positions. Optional EZOCore `family.layout` integration can temporarily preview all configured cells for group positioning.
 - Each visible HUD icon shows its native keyboard or gamepad action-slot binding underneath while the ability is on the active weapon bar. The binding is hidden when the ability is only on the other bar.
+- Binding labels use a larger bold keyboard font and 120% native icon markup (previously 80%), with a 34-pixel footer and at least 112 pixels of width. Automatic layouts reserve this space; saved manual icon positions are unchanged.
 - Hotbar-specific effective ability IDs are resolved for each bar, preventing weapon-dependent variants such as Blockade of Fire from changing tracked identity after a weapon swap.
 - Visibility conditions: while slotted; while active and slotted; and while inactive and slotted. Normal ultimates use ready-to-cast as their active state.
 - Layered state evidence from native slot timers, native toggles, same-ID effects on the player, ultimate resource readiness, and explicit per-ability providers. Missing API data remains `UNKNOWN`; an enabled and slotted tracker configured for inactivity is shown provisionally until positive evidence becomes available, without falsifying the underlying state.
 - Verified state-variant ability-ID families are matched through a stable identity, so chained or greyed-out native IDs do not break slotted, active, or inactive tracking. New families are added only after their IDs are confirmed in ESO.
-- Crystal Fragments uses an explicit proc family: its slotted identity (`114716`), proc cast variant (`46324`), and player proc effect (`46327`) are matched without relying on localized names. The effect's presence is active evidence and its verified absence is inactive evidence.
+- Crystal Fragments uses an explicit proc provider: its slotted identity (`114716`) and proc cast variant (`46324`) preserve the tracker identity, while only the charged player proc effect (`46327`) marks it active. The separate three-second cost-reduction timer for the next non-Ultimate ability is deliberately ignored, so it cannot make Crystal Fragments appear active; the missing proc effect marks it inactive.
+- Bound Armaments uses an explicit slot-stack provider: the active condition requires at least four native stacks (`24165` / `203447`) and the HUD shows the real count in the icon's lower-right corner. If the slot API is unavailable or returns zero, EZOCombat uses the specific player effect `203447` as a fallback and retries that read while the cached value is zero; fewer than four stacks are observed as inactive without changing the generic rules for other stack-based skills.
 - Blighted Blastbones has an explicit native slot-timer provider, so a readable zero timer can establish its initial inactive state before the first cast; this bootstrap rule is reserved for abilities with a verified native negative signal.
 - Cruxweaver Armor uses its explicit native slot timer, including a readable zero as initial inactive evidence. Barbed Trap and both effective Fulminating Rune resource variants use explicit 20-second cast cycles and can be inactive before their first cast because their useful activity is represented on the ground or target rather than by a reliable generic player effect.
 - Proximity Detonation normalizes its effective (`63302`) and base progression (`61487`) IDs and uses the native slot-timer strategy, allowing a readable zero to establish inactivity before the first cast without merging the different Inevitable Detonation morph.
@@ -63,10 +78,11 @@ This functional beta provides the persistent UI, priority foundation, and a laye
 - Global priority management in LAM: show all eligible levels, only the highest eligible level, or the two highest eligible levels. The two-level mode skips empty levels, so eligible P1 and P3 abilities are shown when P2 has none.
 - The LAM tracked-ability section uses one current-profile selector with enable and priority controls. Slotted trackers follow front-bar then back-bar slot order, while configured unslotted trackers are clearly labelled. It refreshes when bar contents, tracked abilities, or the active role profile change, both in standalone LAM and when hosted by EZOCore.
 - LAM sections use the purple information icon for section-wide help; each individual setting keeps its specific help on that field.
-- PvP enemy target frame limited by default to attackable player targets in AvA zones and active battlegrounds. It shows the target name, native current/max health and percentage, class and alliance icons, level or CP, and AvA rank when ESO provides those values.
+- PvP enemy target frame limited by default to attackable player targets in AvA zones and active battlegrounds. It follows the target's projected head position and shows only the player's display name, a compact native-health bar, the normalized class icon, CP when available, and the normalized AvA rank icon.
 - Configurable low-health alert that shows a warning icon for five seconds when the enemy target crosses below the selected percentage. Repeated health events do not restart the timer.
 - Explicit PvE dummy-test scope for the target frame. When selected in LAM, the frame can follow the current attackable reticle target outside PvP so health, movement, and the low-health alert can be verified on dummies.
-- Mouse-only target-frame positioning preview with a persisted position. Enabling move mode from a HUD scene requests ESO UI mouse mode and shows a stable preview instead of live target data, so losing the current reticle target while placing the frame does not hide it. In the default PvP scope it is available only in PvP HUD scenes; in the dummy-test scope it is also available outside PvP for verification. Optional EZOCore `family.layout` integration registers the same move mode as `ezocombat.pvp_target` while keeping the local LAM checkbox as fallback.
+- Configurable target-frame hold time keeps the last target data at its last projected position for a short period after the reticle temporarily loses that target; setting it to zero hides the frame immediately.
+- The target frame follows the projected position above the target's head automatically. Its vertical distance is configurable with `Height above target head`, while `Target-frame hold time` controls how long the last position remains after temporary reticle loss. It has no manual-move mode and does not capture mouse or gamepad input.
 - Optional PvP inverted damage cone using ESO's native scrolling combat text. Its tip starts above the target's head, opens upward, and exposes adjustable tip distance, width, row spacing, and repeated-hit spacing. The default scope applies only to PvP player damage.
 - Explicit PvE dummy-test scope for the inverted damage cone. When selected, EZOCombat also permits monster/dummy targets outside PvP and restores the previous SCT slot/cloud before switching between PvP and test scopes.
 - English and Spanish runtime localization.
@@ -90,8 +106,8 @@ Future state rules and alternate effect-ID mappings will be registered per abili
 1. Open the action-bar window from LAM, `/ezocombat`, or its ESO Controls binding (`Shift+NumPad 3` by default when free).
 2. Right-click a slotted ability in either bar to keep its configuration open.
 3. Enable its HUD icon and choose its visibility condition and `Always visible` or `P1`-`P5` category from the window selectors. In LAM, select any configured ability to edit its enabled state and priority, alongside the global priority-management mode.
-4. Choose **Manual**, **Vertical by priority**, or **Horizontal by priority** in LAM. In manual mode, drag each visible icon independently. In an automatic mode, drag any visible icon with the mouse to move the complete group; alignment and both spacing values are configurable, and each orientation keeps its own position. Use `Show all configured` while positioning every enabled and slotted tracker.
-5. In the PvP enemy target section, enable the frame and low-health alert, choose **PvP only** for real PvP or **PvE dummy test** for dummy verification, choose the threshold, and enable **Move PvP target frame** to drag its preview with the mouse.
+4. Choose **Manual**, **Vertical by priority**, or **Horizontal by priority** in LAM. In manual mode, drag each visible icon independently with the right mouse button. In an automatic mode, drag any visible icon with the right mouse button to move the complete group; alignment and both spacing values are configurable, and each orientation keeps its own position. Use `Show all configured` while positioning every enabled and slotted tracker.
+5. In the PvP enemy target section, enable the frame and low-health alert, choose **PvP only** for real PvP or **PvE dummy test** for dummy verification, choose the threshold, then adjust `Height above target head` and `Target-frame hold time`.
 6. To test the optional damage display, enable **Use inverted PvP damage cone** in the PvP floating-damage section, choose **PvP only** or **PvE dummy test**, and tune the tip distance, cone width, row spacing, and minimum text spacing.
 
 ## Safety Limits
@@ -114,13 +130,15 @@ Verify in ESO:
 - `/reloadui` completes without Lua errors;
 - the PvP target frame initializes without a `BackdropControl` edge-texture error and its solid health fill remains visible;
 - the window opens from LAM, `/ezocombat`, and an assigned binding;
+- the target frame does not capture mouse or gamepad input, including while opening radial or utility wheels;
 - keyboard, mouse, gamepad, chat/Enter, ESC, and normal menus retain their native behavior;
 - both bars show five normal slots and an ultimate;
 - changing a slotted ability refreshes the action-bar window immediately and after closing and reopening it;
 - a tracked icon disappears when its ability is removed from both bars;
 - Blockade of Fire and other hotbar-overridden abilities retain their tracked identity and eligible icon after swapping away from their bar;
 - Blighted Blastbones, Blastbones, and Stalking Blastbones remain matched when ESO changes their native slot ID between normal and greyed-out states, including the inactive condition;
-- Crystal Fragments appears with the active condition as soon as its proc loads, remains matched across a weapon swap, and returns to inactive immediately after consuming or losing the proc;
+- Crystal Fragments appears with the active condition as soon as its instant/half-cost proc loads, ignores the separate three-second cost-reduction effect, remains matched across a weapon swap, and returns to inactive immediately after consuming or losing the proc;
+- Bound Armaments appears with the active condition at four or more native stacks or via its player-effect fallback, shows the matching numeric count in the icon's lower-right corner, remains inactive below four stacks, and returns to inactive after the stacks are fired;
 - Blighted Blastbones shows its inactive tracker on the first load when its native slot timer is readable, without requiring a prior cast;
 - Deep Fissure remains active for its verified nine-second predicted window and becomes inactive when that window expires, without being overridden by a partial native slot timer;
 - Arctic Blast and other native timed skills become active while their slot counter is positive and inactive after expiry; the observed timer capability remains available after `/reloadui`;
@@ -146,14 +164,15 @@ Verify in ESO:
 - the binding below an icon follows the current keyboard/gamepad mode and is hidden when its ability is not on the active bar;
 - dragging and disabling an icon persist through `/reloadui`;
 - an icon follows the cursor smoothly while being dragged, even when combat or HUD state refreshes occur during the drag;
+- in a dense combat or dummy stress test, repeated effect/resource changes do not cause visible freezes, interface errors, or icon jitter; static validation cannot prove this and it must be checked in ESO;
 - `Show all configured` ignores activity and priority filtering only while selected, excludes disabled or unslotted trackers, and switches off when the action-bar window closes;
 - in **PvP only**, the target frame remains hidden in PvE, against NPCs, against allied players, and when no attackable player target exists;
-- in **PvE dummy test**, the target frame follows the current attackable reticle target outside PvP, including dummies, while class/alliance/rank fields stay hidden when ESO provides no data;
+- in **PvE dummy test**, the target frame follows the current attackable reticle target outside PvP, including dummies, while class/CP/rank fields stay hidden when ESO provides no data;
 - the PvP target frame updates when changing targets and when the target's native health changes;
-- class and alliance icons, level/CP, rank, and health values are shown only when ESO provides valid data;
+- the display name, compact health bar, class icon, CP and normalized rank icon are shown only when ESO provides valid data;
+- the target frame follows the projected position above the target's head while the target is eligible, updates at most every 100 ms, and honors the configured hold time after temporary reticle loss;
 - the low-health warning appears once when the target crosses below the configured threshold, remains visible for five seconds, does not extend on repeated damage, and can trigger again after recovery;
-- enabling the target-frame move mode from EZOCombat LAM or EZOCore `family.layout` requests mouse UI mode from HUD/HUD UI, shows a temporary preview only in eligible HUD scenes for the selected scope, mouse dragging persists its position, and disabling the mode removes the preview;
-- the EZOCore `ezocombat.pvp_target` surface is listed only when EZOCore is installed and cannot enable edit mode while the PvP target-frame feature itself is disabled;
+- changing `Height above target head` moves the frame vertically while it continues to follow the target, and changing `Target-frame hold time` controls whether the last position remains after temporary reticle loss;
 - the PvP target frame and warning hide while ESO's interactive radial or utility wheels are open and return when the wheel closes;
 - in **PvP only**, the optional damage cone changes the native SCT position only in AvA or active battleground scenes, places the cone tip nearest the target head, and restores the previous SCT position and cloud when disabled or leaving PvP;
 - in **PvE dummy test**, the optional damage cone can be tuned on monster/dummy targets outside PvP and restores the previous SCT position/cloud when disabled or when switching back to PvP-only scope;

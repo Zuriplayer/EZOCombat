@@ -199,23 +199,29 @@ local function CaptureSlot(slotIndex)
 end
 
 local function RestoreCloud(snapshot)
-    if not snapshot or not IsValidCloud(snapshot.cloudId) then
-        return
+    if not snapshot then
+        return true
+    end
+    if not IsValidCloud(snapshot.cloudId) then
+        return false
     end
 
-    SafeCall("ClearSCTCloudOffsets", snapshot.cloudId)
+    local success = SafeCall("ClearSCTCloudOffsets", snapshot.cloudId)
     for _, offset in ipairs(snapshot.offsets or {}) do
-        SafeCall(
+        local ok = SafeCall(
             "AddSCTCloudOffset",
             snapshot.cloudId,
             offset.ordering,
             offset.x,
             offset.y
         )
+        success = ok and success
     end
     if snapshot.overlap ~= nil then
-        SafeCall("SetSCTCloudAnimationOverlapPercent", snapshot.cloudId, snapshot.overlap)
+        local ok = SafeCall("SetSCTCloudAnimationOverlapPercent", snapshot.cloudId, snapshot.overlap)
+        success = ok and success
     end
+    return success
 end
 
 local function RestoreSlot(slotIndex, snapshot)
@@ -224,8 +230,9 @@ local function RestoreSlot(slotIndex, snapshot)
     end
 
     local position = snapshot.position
+    local success = true
     if position then
-        SafeCall(
+        success = SafeCall(
             "SetSCTSlotPosition",
             slotIndex,
             position.anchorType,
@@ -237,15 +244,18 @@ local function RestoreSlot(slotIndex, snapshot)
         )
     end
     if snapshot.minimumSpacing ~= nil then
-        SafeCall("SetSCTSlotAnimationMinimumSpacing", slotIndex, snapshot.minimumSpacing)
+        local ok = SafeCall("SetSCTSlotAnimationMinimumSpacing", slotIndex, snapshot.minimumSpacing)
+        success = ok and success
     end
-    RestoreCloud(snapshot.keyboardCloud)
+    local keyboardOk = RestoreCloud(snapshot.keyboardCloud)
+    success = keyboardOk and success
     if not snapshot.gamepadCloud
         or not snapshot.keyboardCloud
         or snapshot.gamepadCloud.cloudId ~= snapshot.keyboardCloud.cloudId then
-        RestoreCloud(snapshot.gamepadCloud)
+        local gamepadOk = RestoreCloud(snapshot.gamepadCloud)
+        success = gamepadOk and success
     end
-    return true
+    return success
 end
 
 local function IsDamageSlot(slotIndex, targetTypes)
@@ -297,13 +307,16 @@ end
 
 local function SetOwnedSlotVisible(slotIndex, visible)
     if not IsValidSlot(slotIndex) then
-        return
+        return false
     end
+    local success = true
     for _, eventType in ipairs(DAMAGE_EVENT_TYPES) do
         if eventType ~= nil then
-            SafeCall("SetSCTSlotEventTypeShown", slotIndex, eventType, visible == true)
+            local ok = SafeCall("SetSCTSlotEventTypeShown", slotIndex, eventType, visible == true)
+            success = ok and success
         end
     end
+    return success
 end
 
 local function ConfigureOwnedSlot(slotIndex, targetTypes)
@@ -431,12 +444,16 @@ end
 
 local function RestoreActiveSettings(settings)
     local slotIndex = tonumber(settings.slotIndex)
+    local restored = false
     if settings.mode == "standard" and settings.original then
-        RestoreSlot(slotIndex, settings.original)
+        restored = RestoreSlot(slotIndex, settings.original)
     elseif settings.mode == "owned" then
-        SetOwnedSlotVisible(slotIndex, false)
+        restored = SetOwnedSlotVisible(slotIndex, false)
     end
-
+    -- Retain the snapshot after native failures so a later refresh can retry.
+    if not restored then
+        return false
+    end
     settings.applied = false
     settings.original = nil
     settings.appliedScope = nil
@@ -444,6 +461,7 @@ local function RestoreActiveSettings(settings)
         settings.mode = nil
         settings.slotIndex = nil
     end
+    return true
 end
 
 local function RecoverInterruptedApply(settings)
@@ -455,7 +473,9 @@ local function RecoverInterruptedApply(settings)
             return false
         end
     elseif settings.mode == "owned" then
-        SetOwnedSlotVisible(settings.slotIndex, false)
+        if not SetOwnedSlotVisible(settings.slotIndex, false) then
+            return false
+        end
     end
 
     settings.applied = false
@@ -579,12 +599,14 @@ function PvpSct.Refresh()
     end
 
     if settings.applied == true and settings.appliedScope ~= GetScope() then
-        RestoreActiveSettings(settings)
+        if not RestoreActiveSettings(settings) then
+            return false
+        end
     end
 
     if not IsEnabled() or not IsActiveContext() then
         if settings.applied == true then
-            RestoreActiveSettings(settings)
+            return RestoreActiveSettings(settings)
         elseif settings.mode == "owned" and IsValidSlot(settings.slotIndex) then
             SetOwnedSlotVisible(settings.slotIndex, false)
         end

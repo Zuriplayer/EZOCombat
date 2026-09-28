@@ -8,15 +8,27 @@ Soporte, errores y sugerencias: https://discord.gg/ekw8zUAcRm
 
 ## Estado Beta
 
-Versión: `0.2.39-beta`
+Versión: `0.2.50-beta`
 
 Esta beta funcional aporta la interfaz persistente, la base de prioridades y un motor de estado por evidencias. Los mapas específicos de efectos, umbrales de tiempo restante y catálogos por clase todavía requieren validación independiente en el cliente.
 
 ## Requisitos
 
+### Rendimiento y ciclo de seguimiento
+
+- El trabajo automático de estado se limita a trackers habilitados presentes en cualquiera de las dos barras actuales. Los trackers ordinarios con condición `slotada` no requieren sondeo de estado; los contadores explícitos de cargas sí. Las habilidades no slotadas/no configuradas no inician predicciones ni consultas nativas de estado de slot.
+- Una pasada compartida cada 100 ms alimenta prioridades y contadores. Los estados sin cambios no repintan el HUD. La colocación y los datos de slots se reutilizan hasta que cambian sus entradas; la ventana de barras cerrada no repinta sus slots.
+- Al apagar los iconos HUD, o no existir trackers que necesiten evidencias, se desregistran el temporizador de estados y los eventos de evidencias de combate. Se conservan las notificaciones de slots, barra activa y perfil para descubrir nuevas habilidades slotadas. No es un apagado general del addon: el marco PvP y el cono de daño nativo tienen ajustes independientes.
+- Bound Armaments consulta primero las cargas nativas. Su recuperación por efecto del jugador se alimenta de eventos y se limita a un escaneo cada 500 ms cuando las cargas nativas son cero/no están disponibles, cacheando también el cero. No cambia el umbral activo de cuatro cargas.
+- El marco PvP desconecta los eventos de objetivo fuera de su alcance habilitado/escenas HUD y crea controles solo cuando hacen falta. Los datos de identidad se refrescan como máximo una vez por segundo para el mismo objetivo; salud y proyección conservan su cadencia de 100 ms. La restauración del SCT conserva su copia original si fallan llamadas nativas para poder reintentarlo.
+- Reactivar el seguimiento reconstruye los efectos nativos actuales. Los ciclos predichos no pueden reconstruir lanzamientos hechos con el seguimiento apagado o la habilidad no slotada; estos casos deben probarse con un lanzamiento nuevo.
+- Ejecuta las regresiones independientes en Lua 5.1 desde la raíz con `lua tools/tests/performance_spec.lua`. Usan APIs ESO simuladas y no se cargan con el addon. Superarlas no demuestra una mejora de FPS en el cliente ni aceptación LIVE/PTS.
+
+### Dependencias de ejecución
+
 - Cliente de The Elder Scrolls Online para PC.
 - `LibAddonMenu-2.0`.
-- Versiones de API de ESO declaradas en el manifiesto: `101049 101050`.
+- Versión de API de ESO declarada en el manifiesto: `101051` (API actual del cliente confirmada por el usuario el 2026-09-28; no sustituye la validación de funcionamiento/FPS).
 - Addons opcionales para desarrollo y diagnóstico:
   - `LibDebugLogger`
   - `DebugLogViewer`
@@ -44,13 +56,16 @@ Esta beta funcional aporta la interfaz persistente, la base de prioridades y un 
 - Tamaño de iconos HUD configurable entre 32 y 128 píxeles para el personaje desde LAM. El cambio redimensiona los trackers existentes sin alterar sus posiciones superiores izquierdas guardadas.
 - Organización HUD manual, vertical por prioridad y horizontal por prioridad. El modo vertical coloca `Siempre visible`, P1, P2, P3, P4 y P5 de arriba abajo y distribuye en paralelo los iconos con la misma prioridad. El modo horizontal coloca esos grupos de izquierda a derecha y apila verticalmente los iconos de igual prioridad.
 - Las disposiciones automáticas reservan celdas estables a partir de todos los trackers habilitados que sigan equipados en el perfil actual. Las condiciones de actividad y la política `Mostrar todas`/máxima/dos máximas solo ocultan o muestran esas celdas, por lo que los cambios normales de estado de combate y de barra no redistribuyen los demás iconos. Los grupos crean filas o columnas adicionales si lo exige el tamaño de pantalla.
+- Los refrescos HUD de estado de combate se agrupan a una cadencia de 100 ms y omiten escrituras ZOS UI sin cambios, reduciendo presión por ráfagas de eventos de efectos del jugador, efectos de slot y recurso de ultimate en combate denso.
 - La alineación, separación de iconos y separación entre grupos de prioridad se configuran en LAM. Cada perfil de clase/rol guarda posiciones normalizadas distintas para vertical y horizontal al mover el grupo con el ratón, mientras que volver a manual recupera las posiciones individuales intactas. La integración opcional `family.layout` de EZOCore puede previsualizar temporalmente todas las celdas configuradas para colocar el grupo.
 - Cada icono HUD visible muestra debajo el binding nativo de teclado o mando de su slot mientras la habilidad esté en la barra de arma activa. El binding se oculta cuando la habilidad solo está en la otra barra.
+- Las etiquetas de teclas usan una fuente de teclado mayor y en negrita, y glifos nativos al 120 % (antes 80 %), con 34 píxeles de alto y un mínimo de 112 de ancho. La colocación automática reserva ese espacio; no se cambian las posiciones manuales guardadas.
 - Los IDs efectivos específicos de cada barra se resuelven para su propia barra, evitando que variantes dependientes del arma como Bloqueo elemental cambien de identidad seguida al cambiar de arma.
 - Condiciones de aparición: mientras esté equipada; mientras esté activa y equipada; y mientras esté inactiva y equipada. Las ultimates normales usan el estado lista para lanzar como estado activo.
 - Evidencias de estado por capas mediante temporizadores nativos del slot, toggles nativos, efectos del jugador con el mismo ID, recurso de ultimate y proveedores explícitos por habilidad. La ausencia de datos de API permanece como `UNKNOWN`; un tracker habilitado, equipado y configurado para inactividad se muestra provisionalmente hasta disponer de evidencia positiva, sin falsear el estado interno.
 - Las familias verificadas de IDs variables de estado se comparan mediante una identidad estable, para que los IDs nativos encadenados o atenuados no rompan el seguimiento slotado, activo o inactivo. Las nuevas familias solo se añaden tras confirmar sus IDs en ESO.
-- Crystal Fragments usa una familia de proc explícita: su identidad equipada (`114716`), la variante de lanzamiento del proc (`46324`) y el efecto de proc del jugador (`46327`) se relacionan sin depender de nombres localizados. La presencia del efecto es evidencia activa y su ausencia verificada es evidencia inactiva.
+- Crystal Fragments usa un proveedor explícito de proc: su identidad equipada (`114716`) y la variante de lanzamiento (`46324`) conservan la identidad del tracker, mientras que solo el efecto de proc cargado del jugador (`46327`) lo marca como activo. El temporizador separado de tres segundos para reducir el coste de la siguiente habilidad no definitiva se ignora deliberadamente, por lo que no puede hacer que Crystal Fragments aparezca como activo; la desaparición del proc lo marca como inactivo.
+- Bound Armaments usa un proveedor explícito de acumulaciones del slot: la condición activa exige al menos cuatro acumulaciones nativas (`24165` / `203447`) y el HUD muestra el contador real en la esquina inferior derecha del icono. Si el API del slot no está disponible o devuelve cero, EZOCombat usa como fallback el efecto específico del jugador `203447` y repite esa lectura mientras el valor cacheado sea cero; menos de cuatro acumulaciones se considera inactivo sin cambiar las reglas genéricas de otras habilidades con acumulaciones.
 - Blighted Blastbones tiene un proveedor explícito de temporizador nativo del slot, por lo que un temporizador cero legible puede establecer su estado inicial inactivo antes del primer lanzamiento; esta inicialización solo se aplica a habilidades con una señal negativa nativa verificada.
 - Cruxweaver Armor usa su temporizador nativo explícito, incluido un cero legible como evidencia inicial de inactividad. Barbed Trap y las dos variantes efectivas por recurso de Fulminating Rune usan ciclos explícitos de lanzamiento de 20 segundos y pueden estar inactivas antes del primer lanzamiento, porque su actividad útil se representa en el suelo o el objetivo y no mediante un efecto genérico fiable del jugador.
 - Proximity Detonation normaliza su ID efectivo (`63302`) y su ID base de progresión (`61487`) y usa la estrategia de temporizador nativo, permitiendo que un cero legible establezca la inactividad antes del primer lanzamiento sin mezclar el morfeo diferente Inevitable Detonation.
@@ -63,10 +78,11 @@ Esta beta funcional aporta la interfaz persistente, la base de prioridades y un 
 - Gestión global de prioridades en LAM: mostrar todos los niveles elegibles, solo el nivel elegible más alto o los dos niveles elegibles más altos. El modo de dos niveles omite niveles vacíos; por ejemplo, muestra P1 y P3 cuando P2 no contiene habilidades elegibles.
 - La sección de habilidades seguidas de LAM usa un selector del perfil actual con controles de activación y prioridad. Los trackers equipados siguen el orden de ranuras de la barra frontal y después la trasera; los configurados no equipados quedan identificados. Se actualiza al cambiar el contenido de las barras, crear un tracker o cambiar el perfil de rol activo, tanto en LAM independiente como integrado en EZOCore.
 - Las secciones LAM usan el icono informativo morado para la ayuda general de la sección; cada ajuste conserva su ayuda específica en el propio campo.
-- Marco de objetivo enemigo PvP limitado por defecto a jugadores enemigos atacables en zonas AvA y campos de batalla activos. Muestra el nombre, la salud nativa actual/máxima y su porcentaje, los iconos de clase y alianza, el nivel o CP y el rango AvA cuando ESO proporciona esos datos.
+- Marco de objetivo enemigo PvP limitado por defecto a jugadores enemigos atacables en zonas AvA y campos de batalla activos. Sigue la posición proyectada sobre la cabeza del objetivo y muestra solo el nombre visible del jugador, una barra compacta de salud nativa, el icono normalizado de clase, los CP cuando están disponibles y el icono normalizado de rango AvA.
 - Alerta configurable de salud baja que muestra un icono de aviso durante cinco segundos cuando el objetivo enemigo cruza por debajo del porcentaje elegido. Los eventos de daño repetidos no reinician el temporizador.
 - Alcance explícito de prueba PvE con dummy para el marco de objetivo. Al seleccionarlo en LAM, el marco puede seguir el objetivo atacable actual de la retícula fuera de PvP para verificar salud, movimiento y alerta de salud baja con dummies.
-- Previsualización de posición del marco de objetivo movible solo con ratón, con posición persistente. Al activar el modo mover desde una escena HUD, solicita a ESO el modo UI de ratón y muestra una previsualización estable en vez de los datos vivos del objetivo, de modo que perder el objetivo actual de la retícula durante la colocación no oculta el marco. En el alcance PvP predeterminado solo está disponible en escenas HUD PvP; en el alcance de prueba con dummy también está disponible fuera de PvP para verificarlo. La integración opcional `family.layout` de EZOCore registra el mismo modo mover como `ezocombat.pvp_target` y conserva la casilla LAM local como fallback.
+- Permanencia configurable del marco: conserva durante un periodo breve los datos del último objetivo en su última posición proyectada cuando la retícula lo pierde temporalmente; con cero se oculta inmediatamente.
+- El marco sigue automáticamente la posición proyectada sobre la cabeza del objetivo. La distancia vertical se ajusta con `Altura sobre la cabeza`, mientras que `Permanencia del marco` controla cuánto tiempo conserva la última posición tras perder temporalmente la retícula. No tiene modo de movimiento manual ni captura la entrada del ratón o del gamepad.
 - Cono de daño PvP invertido opcional usando el texto de combate nativo de ESO. Su vértice comienza sobre la cabeza del objetivo, se abre hacia arriba y permite ajustar la distancia del vértice, la anchura, la separación de filas y la separación de impactos repetidos. El alcance predeterminado solo se aplica al daño PvP contra jugadores.
 - Alcance explícito de prueba PvE con dummy para el cono de daño invertido. Al seleccionarlo, EZOCombat también permite objetivos monstruo/dummy fuera de PvP y restaura el slot/nube SCT anterior antes de cambiar entre el alcance PvP y el de prueba.
 - Localización runtime en inglés y español.
@@ -90,8 +106,8 @@ Las reglas futuras y los mapas alternativos de IDs de efecto se registrarán por
 1. Abre la ventana de barras desde LAM, `/ezocombat` o su atajo de Controles de ESO (`Mayusculas+NumPad 3` por defecto cuando está libre).
 2. Haz clic derecho sobre una habilidad equipada de cualquiera de las dos barras para mantener abierta su configuración.
 3. Activa su icono HUD y elige la condición de aparición y la categoría `Siempre visible` o `P1`-`P5` con los selectores de la ventana. En LAM puedes seleccionar cualquier habilidad configurada para editar su activación y prioridad, además del modo global de gestión de prioridades.
-4. Elige **Manual**, **Vertical por prioridad** u **Horizontal por prioridad** en LAM. En manual, arrastra cada icono visible de forma independiente. En un modo automático, arrastra con el ratón cualquier icono visible para mover el grupo completo; puedes ajustar la alineación y ambas separaciones, y cada orientación conserva su propia posición. Usa `Ver todos los configurados` para colocar todos los trackers habilitados y equipados.
-5. En la sección de objetivo enemigo PvP, activa el marco y la alerta de salud baja, elige **Solo PvP** para PvP real o **Prueba PvE con dummy** para verificarlo en dummy, elige el umbral y activa **Mover marco de objetivo PvP** para arrastrar su previsualización con el ratón.
+4. Elige **Manual**, **Vertical por prioridad** u **Horizontal por prioridad** en LAM. En manual, arrastra cada icono visible de forma independiente con el botón derecho. En un modo automático, arrastra con el botón derecho cualquier icono visible para mover el grupo completo; puedes ajustar la alineación y ambas separaciones, y cada orientación conserva su propia posición. Usa `Ver todos los configurados` para colocar todos los trackers habilitados y equipados.
+5. En la sección de objetivo enemigo PvP, activa el marco y la alerta de salud baja, elige **Solo PvP** para PvP real o **Prueba PvE con dummy** para verificarlo en dummy, elige el umbral y ajusta `Altura sobre la cabeza` y `Permanencia del marco`.
 6. Para probar el daño flotante opcional, activa **Usar cono de daño PvP invertido** en la sección de daño flotante PvP, elige **Solo PvP** o **Prueba PvE con dummy** y ajusta la distancia del vértice, la anchura, la separación de filas y la separación mínima del texto.
 
 ## Límites De Seguridad
@@ -114,13 +130,15 @@ Comprueba en ESO:
 - que `/reloadui` termina sin errores Lua;
 - que el marco de objetivo PvP se inicializa sin errores de textura de borde de `BackdropControl` y mantiene visible el relleno sólido de salud;
 - que la ventana se abre desde LAM, `/ezocombat` y un atajo asignado;
+- que el marco no captura la entrada del ratón ni del gamepad, incluso al abrir ruedas radiales o de utilidad;
 - que teclado, ratón, gamepad, chat/Enter, ESC y los menús normales conservan su comportamiento nativo;
 - que ambas barras muestran cinco ranuras normales y una ultimate;
 - que cambiar una habilidad slotada actualiza la ventana de barras inmediatamente y también después de cerrarla y abrirla de nuevo;
 - que un icono seguido desaparece al quitar la habilidad de ambas barras;
 - que Bloqueo elemental y otras habilidades sobrescritas por la barra conservan su identidad seguida y su icono elegible al cambiar a la otra barra;
 - que Blighted Blastbones, Blastbones y Stalking Blastbones mantienen su seguimiento cuando ESO cambia el ID nativo del slot entre los estados normal y atenuado, incluida la condición inactiva;
-- que Crystal Fragments aparece con la condición activa en cuanto se carga el proc, mantiene la asociación al cambiar de barra y vuelve a inactiva inmediatamente al consumir o perder el proc;
+- que Crystal Fragments aparece con la condición activa en cuanto se carga su proc de lanzamiento instantáneo a mitad de coste, ignora el efecto separado de reducción de coste durante tres segundos, mantiene la asociación al cambiar de barra y vuelve a inactiva inmediatamente al consumir o perder el proc;
+- que Bound Armaments aparece con la condición activa al llegar a cuatro o más acumulaciones nativas del slot o mediante el fallback del efecto del jugador, muestra el contador numérico real en la esquina inferior derecha del icono, permanece inactiva por debajo de cuatro y vuelve a inactiva después de disparar las acumulaciones;
 - que Blighted Blastbones muestra su tracker inactivo desde la primera carga cuando el temporizador nativo del slot es legible, sin exigir un lanzamiento previo;
 - que Deep Fissure permanece activa durante su ventana prevista verificada de nueve segundos y pasa a inactiva al terminar, sin que la sustituya un temporizador nativo parcial del slot;
 - que Arctic Blast y otras habilidades con temporizador nativo están activas mientras su contador de slot sea positivo e inactivas al terminar; la capacidad observada debe conservarse tras `/reloadui`;
@@ -146,14 +164,15 @@ Comprueba en ESO:
 - que el binding bajo el icono sigue el modo actual de teclado/mando y se oculta cuando la habilidad no está en la barra activa;
 - que arrastrar y desactivar un icono persiste tras `/reloadui`;
 - que el icono sigue el cursor sin saltos mientras se arrastra, incluso si durante el arrastre se producen refrescos del estado de combate o del HUD;
+- que en una prueba de estrés con combate denso o dummy, los cambios repetidos de efectos/recurso no producen congelamientos visibles, errores de interfaz ni saltos de iconos; la validación estática no lo demuestra y debe comprobarse en ESO;
 - que `Ver todos los configurados` ignora la condición de actividad y el filtro de prioridades solo mientras está marcado, excluye trackers deshabilitados o no equipados y se desactiva al cerrar la ventana de barras;
 - que en **Solo PvP** el marco de objetivo permanece oculto en PvE, contra NPCs, contra jugadores aliados y cuando no existe un jugador enemigo atacable;
-- que en **Prueba PvE con dummy** el marco sigue el objetivo atacable actual de la retícula fuera de PvP, incluidos dummies, mientras los campos de clase/alianza/rango quedan ocultos si ESO no proporciona datos;
+- que en **Prueba PvE con dummy** el marco sigue el objetivo atacable actual de la retícula fuera de PvP, incluidos dummies, mientras los campos de clase/CP/rango quedan ocultos si ESO no proporciona datos;
 - que el marco de objetivo PvP se actualiza al cambiar de objetivo y cuando cambia la salud nativa del objetivo;
-- que los iconos de clase y alianza, el nivel/CP, el rango y los valores de salud solo aparecen cuando ESO proporciona datos válidos;
+- que el nombre visible, la barra compacta de salud, el icono de clase, los CP y el icono normalizado de rango solo aparecen cuando ESO proporciona datos válidos;
+- que el marco sigue la posición proyectada sobre la cabeza del objetivo elegible, se actualiza como máximo cada 100 ms y respeta la permanencia configurada tras perder temporalmente la retícula;
 - que la alerta de salud baja aparece una vez cuando el objetivo cruza el umbral configurado, dura cinco segundos, no se prolonga con daño repetido y puede activarse de nuevo después de recuperarse;
-- que activar el modo de mover el marco desde LAM de EZOCombat o desde `family.layout` de EZOCore solicita el modo UI de ratón desde HUD/HUD UI, muestra una previsualización temporal solo en las escenas HUD elegibles para el alcance seleccionado, el arrastre con ratón conserva la posición y desactivar el modo elimina la previsualización;
-- que la superficie `ezocombat.pvp_target` de EZOCore aparece solo cuando EZOCore está instalado y no puede activar el modo edición si la propia función del marco de objetivo PvP está desactivada;
+- que cambiar `Altura sobre la cabeza` mueve verticalmente el marco mientras continúa siguiendo al objetivo, y que `Permanencia del marco` controla si conserva la última posición tras perder temporalmente la retícula;
 - que el marco PvP y el aviso se ocultan mientras están abiertas las ruedas radiales o de utilidad interactivas de ESO y regresan al cerrarlas;
 - que en **Solo PvP** el cono de daño opcional cambia la posición SCT nativa solo en zonas AvA o campos de batalla activos, coloca el vértice más cerca de la cabeza del objetivo y restaura la posición y la nube SCT anteriores al desactivarlo o salir de PvP;
 - que en **Prueba PvE con dummy** el cono de daño opcional puede ajustarse con objetivos monstruo/dummy fuera de PvP y restaura la posición/nube SCT anterior al desactivarlo o al volver al alcance Solo PvP;
